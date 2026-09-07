@@ -75,6 +75,8 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
 ## 未解决
 
 - Smart-seq2（tabula-muris-facs）outlier 约 12%，UMI 数据 0.1% 到 2.4%。
-- 每单元约两成细胞在 `residual_dubious` grain 里；mcRigor 的 dubious 更多跟 grain 大小相关，而非标签混杂。
+- 每单元约 15% 细胞在 `residual_dubious` grain 里。2026-09-07 用合成 grain 测过功效（`docs/mcrigor-power.md`）：
+  跨 lineage 混合 AUC 0.97、同 lineage 内 fine 状态五五开 0.77、混入一成 0.65，且与 grain 大小基本无关。
+  结论是统计量有效但对单个 grain 是弱证据，**不要**默认按这个标记过滤；旧说法「dubious 主要跟大小相关」已被证伪。
 - 首批 102 个单元（mca1.1 / mca2.0 / mca3.0 / tabula-muris-facs / tabula-muris-drop）的批量运行 2026-09-07 提交；其他数据集未跑。
 - `validate-rigor` 依赖六月 `supercell2.0/outputs/<tissue>` 的 R 结果目录（用户旧工作目录，不在本仓库）。

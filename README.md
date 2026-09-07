@@ -166,11 +166,14 @@ Three things worth knowing before filtering or weighting:
 
 - **`size` is the number of cells**, so it is the natural weight for a
   regression and the reason to normalise before comparing grains.
-- **`mcRigor` is advice, not a verdict.** `trustworthy` passed the heterogeneity
-  test, `residual_dubious` failed it and could not be split at the γ/2 floor,
-  `untested` had fewer than 5 cells. Dropping `residual_dubious` costs roughly a
-  fifth of the cells and biases against small blocks; keeping everything is the
-  default for network inference.
+- **`mcRigor` is a covariate, not a verdict.** `trustworthy` passed the
+  heterogeneity test, `residual_dubious` failed it and could not be split at the
+  γ/2 floor, `untested` had fewer than 5 cells. The test detects contamination
+  reliably only when it is gross; at the levels real grains carry its AUC is
+  about 0.65, so an individual flag is weak evidence
+  ([`docs/mcrigor-power.md`](docs/mcrigor-power.md)). Dropping
+  `residual_dubious` costs about 15% of the cells and biases against small
+  blocks; keeping everything is the default for network inference.
 - **`membership.parquet` traces every cell**, including the outliers that no
   grain contains, so any grain-level result can be pushed back to cells.
 
@@ -187,7 +190,11 @@ mcRigor Nrep 20, cutoff 0.05, gene filter 0.1 · seed 0.
 - Roughly a fifth of the cells of a unit sit in `residual_dubious` grains,
   mostly blocks too small to split at the γ/2 floor. They are delivered with
   the flag.
-- mcRigor's dubious calls track grain size more than fine-label mixing.
+- The `residual_dubious` flag is a weak per-grain signal. Measured on synthetic
+  grains, TT_div separates half-and-half fine-state mixtures from pure grains
+  with AUC ≈ 0.77 and 10% contamination with AUC ≈ 0.65, at every grain size
+  tested. Treat it as a covariate, not a verdict. See
+  [`docs/mcrigor-power.md`](docs/mcrigor-power.md).
 - Figure text is English only (no CJK font is assumed on compute nodes).
 - The report page has a fixed cost of about 20 s per unit (scanpy and umap-learn
   imports plus UMAP itself); the pipeline proper takes about 1 s per 1000 cells.
@@ -226,6 +233,7 @@ with its elapsed time, so a stalled batch task shows where it stopped.
 
 - [`docs/design.md`](docs/design.md): the dated design record (Chinese), including the decisions on coarse-lineage blocks, gene blocking and the report-page template.
 - [`docs/design-2026-09-06.html`](docs/design-2026-09-06.html): the earlier plain-language walkthrough of the workflow.
+- [`docs/mcrigor-power.md`](docs/mcrigor-power.md): how well the mcRigor statistic detects heterogeneous grains at γ = 20, measured.
 - [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Position in the ecosystem

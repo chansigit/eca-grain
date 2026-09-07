@@ -7,6 +7,10 @@ All notable changes to eca-grain. The format follows
 ## Unreleased
 
 ### Documentation
+- `docs/mcrigor-power.md` measures how well the mcRigor statistic detects
+  heterogeneous grains at γ = 20 (AUC 0.97 for mixed lineages, 0.77 for a
+  half-and-half fine-state mixture, 0.65 at 10% contamination, flat in grain
+  size). The README no longer claims the flag tracks grain size.
 - README gains a batch section (output convention `eca-pp/<Tissue>/grain/`, a
   Slurm array example, CPU/memory budget), a downstream-use section (loading
   grains, what `size` and the `mcRigor` statuses mean for filtering), a command
