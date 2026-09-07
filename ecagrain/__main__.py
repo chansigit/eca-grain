@@ -4,6 +4,13 @@ python -m ecagrain validate-rigor <supercell2.0/outputs/<tissue>> [--nrep 1]"""
 from __future__ import annotations
 
 import argparse
+import os
+
+# umap/pynndescent JIT-compile on import (15 s cold); a persistent numba cache cuts the report page to ~half.
+os.environ.setdefault(
+    "NUMBA_CACHE_DIR",
+    os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "ecagrain", "numba"),
+)
 
 from .run import COLS, DEFAULTS, run
 

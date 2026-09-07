@@ -214,3 +214,13 @@ dubious / 阈值 / 拆分是中间过程，留在 summary.json 和 obs 列里，
 - 批量输出位置（用户拍板）：与 `rsi/` 并列的 `eca-pp/<Tissue>/grain/`，里面直接是 `report.html`、`metacells.h5ad`、`membership.parquet`、`summary.json` 等。
   首批：mca1.1（30）、mca2.0（11）、mca3.0（29）、tabula-muris-facs（20）、tabula-muris-drop（12），共 102 个单元、116 万细胞，
   sbatch array（`$SCRATCH/eca-grain-jobs/`，normal 分区，4 CPU / 24 GB / 2 h，并发 12）。
+
+## 2026-09-07（晚）：0.3.0，代码改进第二轮
+
+- 发现 venv 的 numpy 没有 BLAS（`x.T @ x` 3000×1851 要 45 s，scipy `dsyrk` 0.25 s）。这是之前 arpack、mcRigor p×p 慢的真正原因之一。
+  eca-grain 的大矩阵乘法全部改走 `scipy.linalg.blas`；共享 venv 的 numpy 不动（有作业在跑）。
+- lineage 内 PCA 改为不落稠密矩阵：稀疏矩阵上算均值/标准差，按行分块累加协方差（dsyrk），特征分解取前 30 个分量。
+  与 `sc.pp.scale + sc.tl.pca(full)` 的分量相关 1.000000；12k 细胞 1.0 s（原 full SVD 5.4 s，arpack 39 s）；内存与细胞数无关。
+- 报告页自包含（细胞 UMAP 存进 `membership.parquet`）；Leiden 固定 igraph 实现；分阶段日志；`__main__` 默认设 `NUMBA_CACHE_DIR`
+  （报告页冷 55 s → 热 25 s，umap 导入的 7 s 去不掉）；`run.py` 拆成阶段函数；补了 gap 规则、cap、untested 守卫、PCA 等价四个测试。
+- 命名（文件仍叫 `metacells.h5ad`、列叫 `metacell_id`）待用户决定。

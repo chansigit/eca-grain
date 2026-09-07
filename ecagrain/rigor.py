@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
+from scipy.linalg import blas
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
 from .hvg import vst_hvg
@@ -32,7 +33,7 @@ def t_stat(dat):
     ||cᵀc||_F = ||c cᵀ||_F and tr(cᵀc) = tr(G), so no p×p matrix is formed (n²p instead of np² work; equal to 1e-15)."""
     n, p = dat.shape
     c = dat - dat.mean(0)
-    G = c @ c.T
+    G = blas.dgemm(1.0, c, c, trans_b=1)  # scipy BLAS: numpy may have none
     fro2 = (G * G).sum() / (n - 1) ** 2 - 2.0 * np.trace(G) / (n - 1) + p
     return float(np.sqrt(max(fro2, 0.0)) / np.sqrt(p * (p - 0.5)))
 
@@ -86,6 +87,16 @@ def threshold_table(df, test_cutoff=0.05, frac=1 / 6):
         sm = lowess(y, x, frac=frac, it=3, delta=0.01 * (x.max() - x.min()), return_sorted=True)
         thre = pd.DataFrame({"size": sm[:, 0], "thre": sm[:, 1]})
     return thre
+
+
+def flag_dubious(st, test_cutoff=0.05):
+    """(dubious bool Series, threshold table) for a stats table. Grains without T_org (untested) are never dubious;
+    a table without any tested grain gets an empty threshold table."""
+    tested = st["T_org"].notna() if "T_org" in st else pd.Series(False, index=st.index)
+    if not tested.any():
+        return pd.Series(False, index=st.index), pd.DataFrame(columns=["size", "thre"])
+    thre = threshold_table(st[tested], test_cutoff)
+    return pd.Series(classify(st["size"], st["TT_div"], thre), index=st.index) & tested, thre
 
 
 def classify(size, ttd, thre):

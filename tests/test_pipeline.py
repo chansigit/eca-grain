@@ -68,6 +68,8 @@ def test_run_conserves_cells_and_writes_report(unit, tmp_path):
     assert mc.obs.loc[g, "size"] == len(cells)
 
     assert set(mc.obs["mcRigor"]) <= {"trustworthy", "residual_dubious", "untested"}
+    assert (mc.obs.loc[mc.obs["size"] < 5, "mcRigor"] == "untested").all()
+    assert np.allclose(mem[["umap_1", "umap_2"]].to_numpy(), a.obsm["X_umap"])  # report page is self-contained
     assert "X_umap_mean" in mc.obsm and "X_pca_harmony_mean" in mc.obsm
     assert (out / "threshold.tsv").exists() and (out / "summary.json").exists()
 

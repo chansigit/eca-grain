@@ -56,7 +56,7 @@ Three guarantees hold on every run:
 
 | Stage | What happens | Module |
 | --- | --- | --- |
-| Build | Per coarse lineage: own vst HVG selection (per-sample ranking, blocked genes removed) → PCA. Per sample × lineage block: kNN graph → walktrap → cut into round(n/γ) communities; communities above 1.5γ are re-cut on their own subgraph. Blocks below γ form one grain. Lineages under 100 cells fall back to the unit's `X_pca_harmony`. | `build.py`, `hvg.py`, `genes.py` |
+| Build | Per coarse lineage: own vst HVG selection (per-sample ranking, blocked genes removed before ranking) → PCA of the scaled matrix computed from a chunked covariance (no dense matrix, memory independent of cell count). Per sample × lineage block: kNN graph → walktrap → cut into round(n/γ) communities; communities above 1.5γ are re-cut on their own subgraph. Blocks below γ form one grain. Lineages under 100 cells fall back to the unit's `X_pca_harmony`. | `build.py`, `hvg.py`, `genes.py` |
 | Outlier | MetaCells 2 "gaps" deviant rule with three guards: depth rescaling, an adaptive fold from the block's gap distribution, and at least three deviant genes. At most 25% of a block can be dropped. Outliers keep their row in the membership table. | `outlier.py` |
 | Diagnose | mcRigor DETECT in numpy (matches the R package to 1e-9 on the same HVGs): T = ‖corr − I‖_F / √(p(p − 0.5)), TT_div = T / T(column-permuted), null from row permutation, per-size quantile + lowess threshold, Nrep = 20. Grains under 5 cells are `untested`. | `rigor.py` |
 | Recheck | Dubious grains are split in two on their own subgraph (floor γ/2, one level) and re-tested against the saved threshold. Failures stay as `residual_dubious`. | `run.py` |
@@ -103,16 +103,19 @@ eca-grain figures <outdir1> <outdir2> ... --out results.html
 ```
 
 Each run already writes its own `report.html`; this stitches several units
-into one page.
+into one page. The report step imports umap-learn, whose numba compilation
+costs about 15 s cold; the command line sets `NUMBA_CACHE_DIR` (under
+`XDG_CACHE_HOME` or `~/.cache/ecagrain`) when it is unset so this happens once
+per machine.
 
 ## Read your results
 
 | File | Content |
 | --- | --- |
 | `metacells.h5ad` | One row per grain. `X` = summed counts. `obs`: `size`, `sample`, `label` (lineage), `block`, `audit_majority` / `audit_purity` (fine label), `level`, `build_id` / `parent_build_id`, `mcRigor` status (`trustworthy`, `residual_dubious`, `untested`), `TT_div`, `n_test_genes`, `gamma`. `obsm`: `X_umap_mean`, `X_pca_harmony_mean`. `uns["ecagrain"]`: version, parameters, columns, input path. |
-| `membership.parquet` | One row per input cell: `cell`, `sample`, `label`, `audit`, `block`, `metacell_id` (empty for outliers), `status` (`member` / `outlier`), `n_flag_genes`, `build_id`, `level`, `mcRigor`. |
+| `membership.parquet` | One row per input cell: `cell`, `sample`, `label`, `audit`, `block`, `metacell_id` (empty for outliers), `status` (`member` / `outlier`), `n_flag_genes`, `build_id`, `level`, `mcRigor`, `umap_1` / `umap_2` (the unit's cell UMAP, so the report page needs no input file). |
 | `threshold.tsv` | The unit-level mcRigor threshold curve by grain size. |
-| `summary.json`, `report.md` | Counts by stage and status, size quantiles, audit purity, timing, and a per-block table with the outlier fold used. |
+| `summary.json`, `report.md` | Counts by stage and status, size quantiles, audit purity, timing (`elapsed_s` includes the report page, `elapsed_pipeline_s` does not), and a per-block table with the outlier fold used. |
 | `report.html` | Self-contained page: two square UMAPs sharing a lineage legend (grains over translucent raw cells; a grain-level UMAP with Leiden clusters over concave-hull lineage islands) and a marker heatmap split by grain cluster. |
 | `viz_clusters.tsv` | The Leiden cluster of each grain on the report page. |
 
@@ -135,6 +138,8 @@ mcRigor Nrep 20, cutoff 0.05, gene filter 0.1 · seed 0.
   the flag.
 - mcRigor's dubious calls track grain size more than fine-label mixing.
 - Figure text is English only (no CJK font is assumed on compute nodes).
+- The report page has a fixed cost of about 20 s per unit (scanpy and umap-learn
+  imports plus UMAP itself); the pipeline proper takes about 1 s per 1000 cells.
 
 ## Methods and credits
 

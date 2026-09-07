@@ -4,8 +4,7 @@
    translucent) underneath; one shared lineage legend.
 2. Split marker heatmap — rows = de-duplicated top-5 Wilcoxon markers of the metacell clusters; columns split by
    cluster, hierarchically ordered inside each split, splits ordered by clustering the split means; strip = lineage.
-python -m ecagrain figures <run_dir>... --out results.html
-NOTE: the repo's formatter hook rewraps this file after every save; edit it by rewriting the whole file."""
+python -m ecagrain figures <run_dir>... --out results.html"""
 
 from __future__ import annotations
 
@@ -43,9 +42,15 @@ def _png(fig):
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def _cell_umap(input_h5ad):
-    with h5py.File(input_h5ad) as f:
-        return np.asarray(f["obsm/X_umap"]) if "obsm/X_umap" in f else None
+def _cell_umap(mem, input_h5ad):
+    """Cell UMAP from membership.parquet (written since 0.3.0); older run dirs fall back to the input h5ad."""
+    if "umap_1" in mem and mem["umap_1"].notna().any():
+        return mem[["umap_1", "umap_2"]].to_numpy(float)
+    try:
+        with h5py.File(input_h5ad) as f:
+            return np.asarray(f["obsm/X_umap"]) if "obsm/X_umap" in f else None
+    except OSError:
+        return None
 
 
 def _short(s, n=40):
@@ -157,7 +162,9 @@ def figures(run_dir):
     sc.tl.pca(a, n_comps=int(min(30, a.n_obs - 1, a.n_vars - 1)), random_state=0)
     sc.pp.neighbors(a, n_neighbors=min(15, a.n_obs - 1), random_state=0)
     sc.tl.umap(a, random_state=0)
-    sc.tl.leiden(a, resolution=LEIDEN_RES, random_state=0, key_added="cl")
+    sc.tl.leiden(
+        a, resolution=LEIDEN_RES, random_state=0, key_added="cl", flavor="igraph", n_iterations=2, directed=False
+    )
     cl = a.obs["cl"].astype(int).to_numpy()
     pd.DataFrame({"metacell_id": mo.index, "viz_cluster": cl}).to_csv(d / "viz_clusters.tsv", sep="\t", index=False)
     cl_ids = sorted(np.unique(cl))
@@ -165,7 +172,7 @@ def figures(run_dir):
     xy = np.asarray(a.obsm["X_umap"])
 
     # ---- figure 1: two square UMAPs sharing the lineage legend
-    umap = _cell_umap(s["input"])
+    umap = _cell_umap(mem, s["input"])
     fig, axes = plt.subplots(1, 2, figsize=(15, 6.8), gridspec_kw={"wspace": 0.04})
     if "X_umap_mean" in mc.obsm:
         mxy = np.asarray(mc.obsm["X_umap_mean"])

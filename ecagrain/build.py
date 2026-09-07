@@ -1,31 +1,69 @@
 """Build: coordinates per coarse label pooled across samples; grouping inside sample × label blocks.
-Grouping is SuperCell's algorithm: kNN graph → walktrap → cut into round(n/γ) communities."""
+Grouping is SuperCell's algorithm: kNN graph → walktrap → cut into round(n/γ) communities.
+Heavy products go through scipy's BLAS (`scipy.linalg.blas`): numpy in some environments carries no BLAS at all."""
 
 from __future__ import annotations
 
 import igraph as ig
 import numpy as np
-import scanpy as sc
-from anndata import AnnData
+import scipy.linalg
+from scipy import sparse
+from scipy.linalg import blas
 from sklearn.neighbors import NearestNeighbors
 
 from .hvg import vst_hvg
 
 
-def label_embedding(counts, samples, lateral, n_hvg, n_pcs, seed):
+def lognorm(counts):
+    """CP10k + log1p on a csr counts matrix (= scanpy normalize_total(target_sum=1e4) + log1p)."""
+    counts = sparse.csr_matrix(counts, dtype=np.float32)
+    tot = np.asarray(counts.sum(1)).ravel()
+    tot[tot == 0] = 1.0
+    return (sparse.diags((1e4 / tot).astype(np.float32)) @ counts).log1p().tocsr()
+
+
+def pca_scores(L, n_comp, max_value=10.0, chunk=20000):
+    """PCA scores of the scaled matrix without ever densifying it.
+    z = clip((x − mean) / std, ±max_value) per gene (scanpy `scale(max_value=10)`, std with ddof 1, constant genes
+    untouched), then scores = (z − mean_z) V with V the top eigenvectors of the covariance of z. Two passes over
+    row chunks; memory is chunk × p plus p × p. Equal to sc.pp.scale + sc.tl.pca(svd_solver="full") up to sign."""
+    n, p = L.shape
+    mean = np.asarray(L.mean(0)).ravel()
+    sq = np.asarray(L.multiply(L).mean(0)).ravel()
+    var = (sq - mean**2) * (n / (n - 1) if n > 1 else 1.0)
+    std = np.sqrt(np.maximum(var, 0.0))
+    std[std == 0] = 1.0
+
+    def z(i):
+        x = L[i : i + chunk].toarray().astype(np.float64)
+        x -= mean
+        x /= std
+        return np.clip(x, -max_value, max_value, out=x)
+
+    S, s = np.zeros((p, p), order="F"), np.zeros(p)
+    for i in range(0, n, chunk):
+        x = z(i)
+        S = blas.dsyrk(1.0, x, beta=1.0, c=S, trans=1, overwrite_c=1)  # upper triangle of Σ xᵀx
+        s += x.sum(0)
+    S = np.triu(S) + np.triu(S, 1).T
+    mu = s / n
+    C = (S - n * np.outer(mu, mu)) / (n - 1)
+    _, V = scipy.linalg.eigh(C, subset_by_index=[p - n_comp, p - 1])
+    V = np.ascontiguousarray(V[:, ::-1])  # descending variance
+    out = np.empty((n, n_comp), np.float32)
+    for i in range(0, n, chunk):
+        out[i : i + chunk] = blas.dgemm(1.0, z(i) - mu, V)
+    return out
+
+
+def label_embedding(counts, samples, lateral, n_hvg, n_pcs):
     """counts: csr cells×genes of one coarse label (all samples). Returns (coords, tested_gene_mask).
     HVG per sample when >1 sample (batch-only genes drop out); blocked genes (lateral + heat shock + mt/ribo/Malat1) are
     removed before ranking, so n_hvg genes are still selected."""
-    a = AnnData(X=counts.copy())
     hv = vst_hvg(counts, n_hvg, batch=np.asarray(samples, dtype=str), exclude=lateral)
-    sc.pp.normalize_total(a, target_sum=1e4)
-    sc.pp.log1p(a)
-    sub = a[:, hv].copy()
-    sc.pp.scale(sub, max_value=10)
-    n_comp = int(max(2, min(n_pcs, sub.n_obs // 5, sub.n_vars - 1)))
-    # full LAPACK SVD: BLAS-3, ~6x faster than arpack on these dense n×2000 matrices, identical components
-    sc.tl.pca(sub, n_comps=n_comp, random_state=seed, svd_solver="full")
-    return np.asarray(sub.obsm["X_pca"]), hv
+    L = lognorm(counts)[:, hv]
+    n_comp = int(max(2, min(n_pcs, L.shape[0] // 5, L.shape[1] - 1)))
+    return pca_scores(L, n_comp), hv
 
 
 def knn_graph(coords, k):
@@ -68,10 +106,7 @@ def enforce_cap(g, memb, gamma, cap):
             return memb
         for c in big:
             members = np.flatnonzero(memb == c)
-            parts = cut(
-                g.induced_subgraph(members.tolist()),
-                max(2, int(len(members) / gamma + 0.5)),
-            )
+            parts = cut(g.induced_subgraph(members.tolist()), max(2, int(len(members) / gamma + 0.5)))
             memb[members[parts > 0]] = memb.max() + parts[parts > 0]
 
 

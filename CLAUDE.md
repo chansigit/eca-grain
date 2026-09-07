@@ -26,6 +26,8 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
   旧结构的 Fu2022 release 没有 `eca_sample_id`，用 `--sample-col project`。
 - 给用户只报结果目录，不给投射 URL（用户要求）。**报告页和图内文字一律英文**（用户 2026-09-07 要求；节点也无 CJK 字体）。
 - venv 里 scikit-misc 与 numpy 不兼容，scanpy 的 seurat_v3 HVG 不可用，所以 `hvg.py` 自写 vst（与 Seurat 重合 1949/2000）。
+- **venv 的 numpy 2.3.4 没有链接 BLAS**（源码编译，`blas: auto` 找不到），`x.T @ x` 比 scipy 的 `dsyrk` 慢 180 倍；
+  大矩阵乘法一律走 `scipy.linalg.blas` / `scipy.linalg`（scanpy、sklearn 经 scipy 的路径不受影响）。不要为此重装共享 venv 的 numpy。
 
 ## 已定设计（用户拍板；改动前先确认）
 

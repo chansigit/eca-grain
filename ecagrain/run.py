@@ -1,5 +1,6 @@
 """One-through pipeline for one released unit. Fails only on missing input or a failed conservation check.
-Blocks = sample × label (default label = zmip_ann_coarse); coordinates per label pooled across samples."""
+Blocks = sample × label (default label = zmip_ann_coarse); coordinates per label pooled across samples.
+Stages: load → ① build → ② outliers → ③ diagnose → ④ recheck → ⑤ deliver (conservation, files, report page)."""
 
 from __future__ import annotations
 
@@ -62,38 +63,22 @@ def load(h5ad, sample_col, label_col, audit_col, counts_layer, embed_key):
     return counts, obs, a.var.copy(), gpca, ghv, umap
 
 
-def run(h5ad, outdir, **kw):
-    p = {**DEFAULTS, **{k: v for k, v in kw.items() if k in DEFAULTS}}
-    cols = {**COLS, **{k: v for k, v in kw.items() if k in COLS}}
-    t0 = time.time()
-    outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(p["seed"])
-    counts, obs, var, gpca, ghv, umap = load(h5ad, **cols)
-    n_cells = len(obs)
-    blocked = blocked_mask(var)  # never drive grouping: cell cycle, stress, heat shock, mt, ribo, Malat1
-    floor = p["gamma"] // 2
-    cap = int(p["max_size_factor"] * p["gamma"])
-
-    # ---- ① build: coordinates per label (all samples), groups per sample × label block
-    mc_of = np.full(n_cells, -1)  # build-id per cell
+def build_stage(counts, obs, blocked, gpca, ghv, p, embed_key):
+    """① Coordinates per label (all samples pooled), groups per sample × label block.
+    Returns build id per cell, block of each build id, tested genes per label, (kNN graph, cells) per block, block table."""
+    mc_of = np.full(len(obs), -1)
     mc_block, tested_of, graphs, blocks = [], {}, {}, []
-    next_id = 0
+    cap = int(p["max_size_factor"] * p["gamma"])
     for label, pool in obs.groupby("label").indices.items():
         pool = np.asarray(pool)
         if len(pool) >= p["min_pool"]:
             coords, hv = build.label_embedding(
-                counts[pool],
-                obs["sample"].to_numpy()[pool],
-                blocked,
-                p["n_hvg"],
-                p["n_pcs"],
-                p["seed"],
+                counts[pool], obs["sample"].to_numpy()[pool], blocked, p["n_hvg"], p["n_pcs"]
             )
             src = "label"
         else:
             if gpca is None or ghv is None:
-                raise SystemExit(f"label {label!r} has {len(pool)} cells < min_pool and no {cols['embed_key']}")
+                raise SystemExit(f"label {label!r} has {len(pool)} cells < min_pool and no {embed_key}")
             coords, hv, src = gpca[pool], ghv & ~blocked, "global"
         tested_of[label] = np.flatnonzero(hv)
         pos = {c: i for i, c in enumerate(pool)}
@@ -101,10 +86,9 @@ def run(h5ad, outdir, **kw):
             cells = pool[np.asarray(idx)]
             memb, g = build.partition_block(coords[[pos[c] for c in cells]], p["gamma"], p["k"], cap=cap)
             graphs[block] = (g, cells)
-            mc_of[cells] = memb + next_id
+            mc_of[cells] = memb + len(mc_block)
             n_mc = int(memb.max()) + 1
             mc_block += [block] * n_mc
-            next_id += n_mc
             blocks.append(
                 dict(
                     block=block,
@@ -115,57 +99,41 @@ def run(h5ad, outdir, **kw):
                     n_metacells_build=n_mc,
                 )
             )
-    blocks = pd.DataFrame(blocks).set_index("block")
+    return mc_of, mc_block, tested_of, graphs, pd.DataFrame(blocks).set_index("block")
 
-    # ---- ② outliers (MC2 gaps rule with guards), per block, tested genes = the label's HVGs
-    is_out = np.zeros(n_cells, bool)
-    n_flag = np.zeros(n_cells, int)
-    fold_used = {}
+
+def outlier_stage(counts, obs, mc_of, graphs, tested_of, blocks):
+    """② MC2 gaps rule with guards, per block; tested genes = the label's HVGs. Adds fold and counts to `blocks`."""
+    is_out, n_flag, fold_used = np.zeros(len(obs), bool), np.zeros(len(obs), int), {}
     for block, (_g, cells) in graphs.items():
         mcs = mc_of[cells]
         members = [np.flatnonzero(mcs == m) for m in np.unique(mcs)]
         o, nf, fold_used[block] = outlier.find_outliers(counts[cells], tested_of[block.split("|", 1)[1]], members)
         is_out[cells], n_flag[cells] = o, nf
     blocks["outlier_fold"] = pd.Series(fold_used)
-    build_id = mc_of.copy()
-    mc_of[is_out] = -1
     blocks["n_outliers"] = pd.Series(is_out).groupby(obs["block"].to_numpy()).sum()
+    return is_out, n_flag
 
-    # ---- ③ diagnose (mcRigor port), unit-level threshold
-    logdata, hv_unit = rigor.lognorm_hvg(counts, p["n_hvg"])
-    L = logdata[:, hv_unit].tocsr()
-    groups = pd.Series(np.arange(n_cells)).groupby(mc_of).indices  # build-id -> cell idx
 
-    def stats_for(ids):
-        rows = {}
-        for m in ids:
-            n = len(groups[m])
-            r = (
-                rigor.metacell_stats(L, groups[m], rng, p["gene_filter"], p["nrep"])
-                if n >= p["min_test_size"]
-                else None
-            )
-            rows[m] = r or {"size": n}
-        st = pd.DataFrame.from_dict(rows, orient="index")
-        st["TT_div"] = rigor.tt_div(st) if "T_org" in st else 1.0
-        return st
+def grain_stats(L, groups, ids, rng, p):
+    """③ mcRigor statistics per grain id (size only when below min_test_size)."""
+    rows = {}
+    for m in ids:
+        n = len(groups[m])
+        r = rigor.metacell_stats(L, groups[m], rng, p["gene_filter"], p["nrep"]) if n >= p["min_test_size"] else None
+        rows[m] = r or {"size": n}
+    st = pd.DataFrame.from_dict(rows, orient="index")
+    st["TT_div"] = rigor.tt_div(st) if "T_org" in st else 1.0
+    return st
 
-    ids0 = [m for m in sorted(groups) if m >= 0]
-    st = stats_for(ids0)
-    tested = st["T_org"].notna() if "T_org" in st else pd.Series(False, index=st.index)
-    if tested.any():
-        thre = rigor.threshold_table(st[tested], p["test_cutoff"])
-        st["dubious"] = rigor.classify(st["size"], st["TT_div"], thre) & tested
-    else:
-        thre = pd.DataFrame(columns=["size", "thre"])
-        st["dubious"] = False
-    st["level"], st["parent"] = 0, -1
 
-    # ---- ④ recheck: split dubious metacells in place (walktrap on their own subgraph), floor γ/2, one level
+def recheck_stage(st, groups, graphs, mc_block, mc_of, floor, min_test_size):
+    """④ Split dubious grains in place (walktrap on their own subgraph), floor γ/2, one level.
+    Children get new ids appended to `mc_block`; returns the status of every build id."""
     status = {}
-    for m in ids0:
+    for m in st.index:
         if not st.loc[m, "dubious"]:
-            status[m] = "trustworthy" if len(groups[m]) >= p["min_test_size"] else "untested"
+            status[m] = "trustworthy" if len(groups[m]) >= min_test_size else "untested"
             continue
         g, cells = graphs[mc_block[m]]
         members = groups[m]
@@ -179,20 +147,61 @@ def run(h5ad, outdir, **kw):
             status[m] = "residual_dubious"
             continue
         for h in range(len(sizes)):
-            mc_of[members[parts == h]] = next_id
+            mc_of[members[parts == h]] = len(mc_block)
             mc_block.append(mc_block[m])
-            next_id += 1
         status[m] = "split"
+    return status
+
+
+def run(h5ad, outdir, **kw):
+    p = {**DEFAULTS, **{k: v for k, v in kw.items() if k in DEFAULTS}}
+    cols = {**COLS, **{k: v for k, v in kw.items() if k in COLS}}
+    t0 = time.time()
+
+    def log(msg):
+        print(f"[ecagrain +{time.time() - t0:6.1f}s] {msg}", flush=True)
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(p["seed"])
+    counts, obs, var, gpca, ghv, umap = load(h5ad, **cols)
+    n_cells = len(obs)
+    blocked = blocked_mask(var)  # never drive grouping: cell cycle, stress, heat shock, mt, ribo, Malat1
+    floor = p["gamma"] // 2
+    log(
+        f"loaded {n_cells} cells × {counts.shape[1]} genes, {obs['sample'].nunique()} samples, {obs['label'].nunique()} labels"
+    )
+
+    mc_of, mc_block, tested_of, graphs, blocks = build_stage(counts, obs, blocked, gpca, ghv, p, cols["embed_key"])
+    log(f"① build: {len(mc_block)} grains in {len(blocks)} blocks")
+
+    is_out, n_flag = outlier_stage(counts, obs, mc_of, graphs, tested_of, blocks)
+    build_id = mc_of.copy()
+    mc_of[is_out] = -1
+    log(f"② outliers: {int(is_out.sum())} ({is_out.mean():.1%})")
+
+    logdata, hv_unit = rigor.lognorm_hvg(counts, p["n_hvg"])
+    L = logdata[:, hv_unit].tocsr()
+    groups = pd.Series(np.arange(n_cells)).groupby(mc_of).indices  # build-id -> cell idx
+    ids0 = [m for m in sorted(groups) if m >= 0]
+    st = grain_stats(L, groups, ids0, rng, p)
+    st["dubious"], thre = rigor.flag_dubious(st, p["test_cutoff"])
+    st["level"], st["parent"] = 0, -1
+    n_dub0 = int(st["dubious"].sum())
+    log(f"③ diagnose: {n_dub0} dubious of {len(ids0)} ({n_dub0 / max(len(ids0), 1):.1%})")
+
+    status = recheck_stage(st, groups, graphs, mc_block, mc_of, floor, p["min_test_size"])
     groups = pd.Series(np.arange(n_cells)).groupby(mc_of).indices
     new_ids = [m for m in sorted(groups) if m >= 0 and m not in status]
     if new_ids:
-        st1 = stats_for(new_ids)
+        st1 = grain_stats(L, groups, new_ids, rng, p)
         st1["dubious"] = rigor.classify(st1["size"], st1["TT_div"], thre)
         st1["level"] = 1
         st1["parent"] = [build_id[groups[m][0]] for m in new_ids]
         for m in new_ids:  # children are ≥ floor ≥ min_test_size, so always tested
             status[m] = "residual_dubious" if st1.loc[m, "dubious"] else "trustworthy"
         st = pd.concat([st, st1])
+    log(f"④ recheck: split {sum(s == 'split' for s in status.values())}, {len(new_ids)} children")
 
     # ---- ⑤ aggregate + conservation + write
     final = [m for m in sorted(groups) if m >= 0 and status[m] != "split"]
@@ -202,8 +211,7 @@ def run(h5ad, outdir, **kw):
     if not np.array_equal(assigned, ~is_out):
         raise SystemExit("conservation failed: assigned cells != non-outlier cells")
     M = sparse.csr_matrix(
-        (np.ones(assigned.sum()), (row[assigned], np.flatnonzero(assigned))),
-        shape=(len(final), n_cells),
+        (np.ones(assigned.sum()), (row[assigned], np.flatnonzero(assigned))), shape=(len(final), n_cells)
     )
     size = np.asarray(M.sum(1)).ravel().astype(int)
     if size.sum() + is_out.sum() != n_cells:
@@ -241,12 +249,7 @@ def run(h5ad, outdir, **kw):
         mca.obsm["X_umap_mean"] = np.asarray(Mn @ umap)
     if gpca is not None:
         mca.obsm[f"{cols['embed_key']}_mean"] = np.asarray(Mn @ gpca)
-    mca.uns["ecagrain"] = {
-        "version": __version__,
-        "params": p,
-        "columns": cols,
-        "input": str(h5ad),
-    }
+    mca.uns["ecagrain"] = {"version": __version__, "params": p, "columns": cols, "input": str(h5ad)}
     mca.write_h5ad(outdir / "metacells.h5ad")
 
     membership = obs.assign(
@@ -256,6 +259,8 @@ def run(h5ad, outdir, **kw):
         build_id=build_id,
         level=np.where(assigned, st["level"].reindex(mc_of).fillna(-1).to_numpy(), -1).astype(int),
         mcRigor=[status.get(m) for m in mc_of],
+        umap_1=umap[:, 0] if umap is not None else np.nan,  # cell UMAP kept here so the report page needs no input
+        umap_2=umap[:, 1] if umap is not None else np.nan,
     )
     membership.to_parquet(outdir / "membership.parquet", index=False)
     thre.to_csv(outdir / "threshold.tsv", sep="\t", index=False)
@@ -264,7 +269,6 @@ def run(h5ad, outdir, **kw):
     blocks["n_metacells_final"] = mc_by_block.size()
     blocks["n_residual_dubious"] = mc_by_block["mcRigor"].apply(lambda s: int((s == "residual_dubious").sum()))
     blocks = blocks.fillna({"n_metacells_final": 0, "n_residual_dubious": 0})
-    n_dub0 = int(st.loc[ids0, "dubious"].sum())
     summary = {
         "version": __version__,
         "input": str(h5ad),
@@ -293,12 +297,14 @@ def run(h5ad, outdir, **kw):
         "blocks": blocks.reset_index().to_dict(orient="records"),
     }
     (outdir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
+    log(f"⑤ deliver: {len(final)} grains, conservation ok, files written")
     from .figures import write_html  # per-unit page = the agreed template (two figures)
 
     write_html([outdir], outdir / "report.html")
     summary["elapsed_pipeline_s"], summary["elapsed_s"] = summary["elapsed_s"], round(time.time() - t0, 1)
     (outdir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
     (outdir / "report.md").write_text(report(summary, blocks))
+    log("report page written")
     return summary
 
 
