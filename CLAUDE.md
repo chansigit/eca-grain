@@ -45,6 +45,18 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
   UMAP 的 Leiden 1.0 聚类叠在 lineage 凹包岛上），下方按 grain 聚类 split 的 marker 热图；不显示 dubious / threshold /
   split 等中间结果；不加 panel 字母。改图先问用户。
 
+## 批量运行（当前做法）
+
+- 清单和作业脚本在 `$SCRATCH/eca-grain-jobs/`：`units.tsv`（每行 `<final.h5ad>\t<额外参数>`）、`grain_array.sbatch`、`logs_v040/`。
+  新增数据集就往 `units.tsv` 追加行，不必改脚本。
+- **不要给 array 设并发上限**（用户 2026-09-07 要求），`--array=1-N` 即可，让调度器决定。
+  已提交的作业可用 `scontrol update jobid=<id> ArrayTaskThrottle=0` 解除。
+- 每个任务 4 CPU / 24 GB / 2 h 足够（最大 69k 细胞的单元 90 s、峰值近 12 GB）。作业里要设
+  `NUMBA_CACHE_DIR`、`MPLCONFIGDIR` 到 `$SCRATCH/.cache`，否则每个任务都重编译 umap、重建字体缓存。
+- **不要用 `sleep` 反复轮询**（用户明确反对）。要等作业就挂一个后台脚本：循环里用 bash 内建判断
+  （`q=$(squeue --me -h -n eca-grain -o "%t"); [[ -z $q ]] && break`），不要用 `grep -q`，
+  这个环境的 env 很大，外部命令可能报 `Argument list too long` 导致循环立刻退出、校验提前触发。
+
 ## 开发约定
 
 - ruff（行宽 120，规则见 pyproject）+ pytest；CI 在 GitHub Actions（lint + Python 3.10 / 3.12 测试 + wheel 导入）。

@@ -4,6 +4,14 @@ All notable changes to eca-grain. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Documentation
+- README gains a batch section (output convention `eca-pp/<Tissue>/grain/`, a
+  Slurm array example, CPU/memory budget), a downstream-use section (loading
+  grains, what `size` and the `mcRigor` statuses mean for filtering), a command
+  reference and a troubleshooting table.
+
 ## 0.4.0 - 2026-09-07
 
 ### Changed

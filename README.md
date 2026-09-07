@@ -108,6 +108,31 @@ costs about 15 s cold; the command line sets `NUMBA_CACHE_DIR` (under
 `XDG_CACHE_HOME` or `~/.cache/ecagrain`) when it is unset so this happens once
 per machine.
 
+### 4. Run many units
+
+Released units live at `<dataset>/eca-pp/<Tissue>/rsi/units/<unit>/release/final.h5ad`.
+The convention in this project is to write grains next to `rsi/`, in
+`<dataset>/eca-pp/<Tissue>/grain/`, one directory per unit:
+
+```bash
+IN=.../eca-pp/Liver/rsi/units/liver/release/final.h5ad
+eca-grain run "$IN" "${IN%/rsi/units/*}/grain"
+```
+
+Units are independent, so a scheduler array is the whole batch driver. On Slurm,
+one task per line of a manifest:
+
+```bash
+ls */eca-pp/*/rsi/units/*/release/final.h5ad > units.txt
+sbatch --array=1-$(wc -l < units.txt) --cpus-per-task=4 --mem=24G --time=02:00:00 \
+       --wrap 'IN=$(sed -n "${SLURM_ARRAY_TASK_ID}p" units.txt); eca-grain run "$IN" "${IN%/rsi/units/*}/grain"'
+```
+
+Budget about 4 CPUs and 24 GB per task. In a 102-unit, 1.16-million-cell run the
+largest unit (69k cells) took 90 s and peaked near 12 GB; the median unit took
+under a minute. Set `NUMBA_CACHE_DIR` and `MPLCONFIGDIR` to a shared writable
+path so the tasks do not each recompile umap or rebuild the font cache.
+
 ## Read your results
 
 | File | Content |
@@ -122,6 +147,32 @@ per machine.
 Grain counts follow cell counts: a lineage with ten times more cells gets
 about ten times more grains. Intermediate states (dubious, split, threshold)
 are recorded in the files but do not appear on the page.
+
+### Using grains downstream
+
+`grains.h5ad` holds summed raw counts over the input's complete gene set, so it
+drops into any workflow that expects a counts matrix:
+
+```python
+import anndata as ad, scanpy as sc
+
+g = ad.read_h5ad(".../grain/grains.h5ad")     # grains × all genes, summed counts
+g = g[g.obs["mcRigor"] == "trustworthy"]      # optional; see the note below
+sc.pp.normalize_total(g, target_sum=1e4)      # grains differ in size, so normalise
+sc.pp.log1p(g)
+```
+
+Three things worth knowing before filtering or weighting:
+
+- **`size` is the number of cells**, so it is the natural weight for a
+  regression and the reason to normalise before comparing grains.
+- **`mcRigor` is advice, not a verdict.** `trustworthy` passed the heterogeneity
+  test, `residual_dubious` failed it and could not be split at the γ/2 floor,
+  `untested` had fewer than 5 cells. Dropping `residual_dubious` costs roughly a
+  fifth of the cells and biases against small blocks; keeping everything is the
+  default for network inference.
+- **`membership.parquet` traces every cell**, including the outliers that no
+  grain contains, so any grain-level result can be pushed back to cells.
 
 ## Fixed parameters
 
@@ -140,6 +191,29 @@ mcRigor Nrep 20, cutoff 0.05, gene filter 0.1 · seed 0.
 - Figure text is English only (no CJK font is assumed on compute nodes).
 - The report page has a fixed cost of about 20 s per unit (scanpy and umap-learn
   imports plus UMAP itself); the pipeline proper takes about 1 s per 1000 cells.
+
+## Command reference
+
+| Command | What it does |
+| --- | --- |
+| `eca-grain run <final.h5ad> <outdir>` | The whole pipeline for one unit. Flags: `--sample-col` / `--label-col` / `--audit-col` / `--counts-layer` / `--embed-key` for input columns, and one flag per fixed parameter (`--gamma`, `--k`, `--max-size-factor`, `--n-hvg`, `--n-pcs`, `--min-pool`, `--min-test-size`, `--nrep`, `--test-cutoff`, `--gene-filter`, `--seed`). |
+| `eca-grain figures <run_dir>... --out page.html` | Rebuild the report page for one run, or stitch several runs into one page. Reads only the run directories. |
+| `eca-grain validate-rigor <tissue_dir>` | Compare the mcRigor port against R outputs of the same tissue (`input/counts.mtx`, `supercell/membership.tsv`, `mcrigor/*.tsv`). |
+
+`python -m ecagrain ...` is equivalent to `eca-grain ...` and needs no
+installation when the repository is on `PYTHONPATH`. Each stage prints a line
+with its elapsed time, so a stalled batch task shows where it stopped.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `missing obs column 'eca_sample_id'` | An older release that predates the column. Pass another per-sample column, for example `--sample-col channel` or `--sample-col project`. |
+| `sample ids must not contain '\|'` | Block names are `sample\|lineage`. Choose a different sample column. |
+| `label 'X' has N cells < min_pool and no X_pca_harmony` | A tiny lineage needs the unit's global embedding as a fallback. Re-release with `obsm["X_pca_harmony"]`, or raise `--min-pool` so the lineage computes its own coordinates. |
+| `conservation failed …` | A genuine bug: the run aborts instead of writing a partial result. Report the unit and the message. |
+| The report page has no cell UMAP | The input had no `obsm["X_umap"]`, or the run predates 0.3.0 and its input has moved. Rerun `eca-grain run` to store the coordinates in `membership.parquet`. |
+| Everything is slow, especially PCA | A numpy built without BLAS makes matrix products two orders of magnitude slower. eca-grain routes its own heavy products through `scipy.linalg.blas`, but scanpy and scikit-learn calls in the same environment stay slow. Check with `numpy.show_config()`. |
 
 ## Methods and credits
 
