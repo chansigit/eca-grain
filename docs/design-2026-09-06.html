@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metacell 方案：一条命令跑到底，把细胞打包成小组</title>
+<style>
+  :root {
+    --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --bg: #fbfbfc;
+    --build: #2f6fed; --outl: #7c3aed; --diag: #d97706; --recheck: #059669; --out: #6b7280;
+    --warn-bg: #fff7ed; --warn-line: #fdba74; --ok-bg: #ecfdf5; --ok-line: #6ee7b7; --note-bg: #eef3ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.7 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 28px; line-height: 1.3; margin: 0 0 8px; }
+  h2 { font-size: 20px; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); font-size: 17px; }
+  .one-liner { background: var(--note-bg); border-left: 4px solid var(--build); padding: 14px 18px; margin: 20px 0; font-size: 17px; }
+  .flow { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; margin: 20px 0 8px; }
+  .stage { border: 2px solid; border-radius: 10px; padding: 12px 12px; background: #fff; }
+  .stage h4 { margin: 0 0 4px; font-size: 15px; }
+  .stage small { color: var(--muted); display: block; margin-bottom: 8px; font-size: 13px; }
+  .stage ul { margin: 0; padding-left: 16px; font-size: 13.5px; line-height: 1.5; }
+  .stage.build { border-color: var(--build); } .stage.build h4 { color: var(--build); }
+  .stage.outl { border-color: var(--outl); } .stage.outl h4 { color: var(--outl); }
+  .stage.diag { border-color: var(--diag); } .stage.diag h4 { color: var(--diag); }
+  .stage.recheck { border-color: var(--recheck); } .stage.recheck h4 { color: var(--recheck); }
+  .stage.out { border-color: var(--out); } .stage.out h4 { color: var(--out); }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 20px; }
+  .callout { border: 1px solid; border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+  .callout.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+  .callout b { display: block; margin-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f1f4f7; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 12px 0; }
+  .steps li { position: relative; padding-left: 40px; margin: 10px 0; }
+  .steps li::before { counter-increment: s; content: counter(s); position: absolute; left: 0; top: 2px;
+    width: 26px; height: 26px; border-radius: 50%; color: #fff; text-align: center; line-height: 26px; font-size: 14px; font-weight: 600; }
+  .steps.build li::before { background: var(--build); }
+  .steps.outl li::before { background: var(--outl); }
+  .steps.diag li::before { background: var(--diag); }
+  .steps.recheck li::before { background: var(--recheck); }
+  .steps li b { display: block; }
+  .steps li span { color: var(--muted); font-size: 15px; }
+  figure { margin: 16px 0; text-align: center; }
+  figcaption { color: var(--muted); font-size: 14px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .rule { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 15px; }
+  .rule b { display: block; margin-bottom: 4px; }
+  @media (max-width: 760px) { .flow { grid-template-columns: 1fr; } .arrow { transform: rotate(90deg); } .two, .rules { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+
+<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 14px;margin-bottom:16px">这是 9 月 6 日的通俗版设计说明，此后定下的事（定名 <b>ecagrain / GRAIN</b>、按粗 lineage 分块、屏蔽基因、结果页模板）记在 <code>docs/design.md</code> 和仓库 <code>README.md</code>，以那两份为准。</div>
+
+<h1>Metacell 方案：一条命令跑到底，把细胞打包成小组</h1>
+<p class="lead">给 eca-rsi 已经发布的每个组织（<code>release/final.h5ad</code>）做 metacell，供后面算 GRN 用。
+2026-09-06 讨论定稿，实现还没开始。</p>
+
+<div class="one-liner">
+一句话：把表达很像的细胞，二十个左右打包成一个"小组"，把它们的 counts 加起来，当作一个更干净的细胞来用。
+打包时不能把不同状态的细胞混在一起，混进来的孤立细胞要挑出去，稀有细胞不能弄丢，小组数量还要和原来的细胞数大致成比例。
+整个过程参数事先定死，一条命令跑完，不回头调。
+</div>
+
+<figure>
+<svg width="640" height="150" viewBox="0 0 640 150" role="img" aria-label="二十个相似细胞打包成一个 metacell，一个不像的细胞被挑出">
+  <g fill="#2f6fed" opacity="0.85">
+    <circle cx="60" cy="60" r="5"/><circle cx="78" cy="48" r="5"/><circle cx="92" cy="66" r="5"/><circle cx="70" cy="80" r="5"/>
+    <circle cx="105" cy="45" r="5"/><circle cx="118" cy="70" r="5"/><circle cx="88" cy="90" r="5"/><circle cx="52" cy="95" r="5"/>
+    <circle cx="130" cy="55" r="5"/><circle cx="110" cy="92" r="5"/><circle cx="66" cy="40" r="5"/><circle cx="140" cy="80" r="5"/>
+    <circle cx="98" cy="108" r="5"/><circle cx="124" cy="104" r="5"/><circle cx="46" cy="72" r="5"/><circle cx="82" cy="30" r="5"/>
+    <circle cx="150" cy="65" r="5"/><circle cx="136" cy="98" r="5"/><circle cx="58" cy="112" r="5"/>
+  </g>
+  <circle cx="116" cy="32" r="5" fill="#7c3aed"/>
+  <text x="100" y="138" text-anchor="middle" font-size="13" fill="#52606d">20 个相似细胞，其中 1 个明显不像</text>
+  <path d="M190 72 H 300" stroke="#52606d" stroke-width="2" marker-end="url(#a)"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#52606d"/></marker></defs>
+  <text x="245" y="60" text-anchor="middle" font-size="13" fill="#52606d">counts 相加</text>
+  <circle cx="370" cy="72" r="26" fill="#2f6fed"/>
+  <circle cx="420" cy="30" r="5" fill="#7c3aed"/>
+  <text x="432" y="34" font-size="12" fill="#7c3aed">outlier，单独记账</text>
+  <text x="370" y="138" text-anchor="middle" font-size="13" fill="#52606d">1 个 metacell，size = 19</text>
+  <g font-size="13" fill="#1f2933">
+    <text x="440" y="66">每个细胞要么进一个小组</text>
+    <text x="440" y="88">要么标成 outlier</text>
+    <text x="440" y="110">size 之和 + outlier 数 = 细胞总数</text>
+  </g>
+</svg>
+<figcaption>metacell 的本质：一个划分，加一个求和；不像的细胞挑出去但不丢账。</figcaption>
+</figure>
+
+<h2>四条原则</h2>
+<div class="rules">
+  <div class="rule"><b>一条命令跑到底</b>参数事先定死，中间没有人工检查点，不看结果回头调参。诊断只进报告，不进流程。</div>
+  <div class="rule"><b>一个细胞都不丢账</b>细胞可以不进小组，但每个细胞在表里都有一行、有去向、有原因。</div>
+  <div class="rule"><b>只拆不合、不重洗牌</b>复查只在原小组内部细化，已通过的小组一个不动。</div>
+  <div class="rule"><b>确定性</b>固定随机种子，同样输入同样结果。</div>
+</div>
+<div class="callout warn"><b>"不丢账"是本方案的约定，不是所有 metacell 算法的共性。</b>
+MetaCells 2 会把 outlier 放进一个未分配桶；mcRigor 的默认用法是把可疑小组整个剔除；SuperCell 和 SEACells 全部分配、没有任何丢弃选项。
+这里借 MetaCells 2 的 outlier 思路，但把"丢"改成"单独记账"。</div>
+
+<h2>整体流程</h2>
+<div class="flow">
+  <div class="stage build"><h4>① 打包</h4><small>SuperCell 算法</small>
+    <ul><li>按样本、再按粗标签分格子</li><li>按粗标签跨样本重算坐标</li><li>格子内最近的约 20 个打成一组</li><li>保留层次树</li></ul></div>
+  <div class="arrow">→</div>
+  <div class="stage outl"><h4>② 挑 outlier</h4><small>MetaCells 2 规则</small>
+    <ul><li>每个细胞和所在小组比</li><li>差太多的挑出来</li><li>不进小组，单独记账</li><li>每格子最多挑 25%</li></ul></div>
+  <div class="arrow">→</div>
+  <div class="stage diag"><h4>③ 体检</h4><small>mcRigor</small>
+    <ul><li>查小组内部是不是"一家人"</li><li>不看标签</li><li>结论：可信 / 可疑</li></ul></div>
+  <div class="arrow">→</div>
+  <div class="stage recheck"><h4>④ 复查</h4><small>树上多切一刀</small>
+    <ul><li>可疑小组一分为二</li><li>再体检一次</li><li>最小 10 个就停</li><li>可信小组不动</li></ul></div>
+  <div class="arrow">→</div>
+  <div class="stage out"><h4>⑤ 交付</h4><small>每组织一套表</small>
+    <ul><li>细胞去向表</li><li>小组 counts 矩阵</li><li>阈值、汇总、报告</li></ul></div>
+</div>
+<div class="callout ok"><b>交付前的守恒检查：所有小组的 size 加上 outlier 数，必须正好等于原始细胞数，每个格子也一样。</b>
+对不上就算失败，不写输出。这是整个流程唯二的失败条件之一，另一个是输入缺失。</div>
+
+<h2>① 打包：怎么分小组</h2>
+<ol class="steps build">
+  <li><b>先分格子：每个样本一格，格子里再按细标签分。</b>
+    <span>样本 A 的 naive T 细胞是一格，样本 A 的 memory T 细胞是另一格。小组永远不跨样本、不跨标签。
+    不跨样本是为了保住每个样本各自的细胞组成，也避开 Harmony 校正把不同样本的状态硬拉到一起。
+    不跨标签是把已有标注当成不能越过的边界（一开始设计用粗标签，后来定为细标签；粗标签作为核对列记录）。
+    代价：多样本数据里小标签会被切成很多小格子，不到 20 个细胞的格子整格一个小组，甚至单细胞。</span></li>
+  <li><b>每一类细胞重新"看清楚"，坐标跨样本算，分组只在格子里做。</b>
+    <span>全局 PCA 的前几十个方向都在描述 T 细胞和 B 细胞的差别，T 细胞内部 naive 和 memory 那点差异根本不在里面，所以要按类型重算坐标。
+    但格子可能很小，样本 A 只有 30 个巨噬细胞，30 个细胞算不出像样的 PCA。办法是把"坐标从哪来"和"谁能分到一组"分开：
+    坐标在整个组织的全部巨噬细胞上算（几百上千个，稳定），选高变基因时只留在样本内部也高变的基因，批次专属基因自动出局；
+    分组时那 30 个细胞只借用这套坐标，只和自己格子里的细胞连边。批次偏移在一个格子内是常数，不改变格子里谁和谁近。
+    如果整个组织这一类细胞合起来还不到 100 个，就不重算，直接用 <code>final.h5ad</code> 里现成的全局坐标。
+    选高变基因时用固定名单剔掉细胞周期和解离应激基因，免得小组按"分裂期 / 静止期"分组。这和 ZMIP 按 lineage 跨样本重嵌入是同一做法。</span></li>
+  <li><b>把最近的约 20 个细胞打成一组。</b>
+    <span>在近邻图上做 walktrap 社区切分，小组数 = 格子数 ÷ 20 四舍五入（至少 1 组）。γ = 20 是目标平均值，不是固定大小：
+    70 个细胞切 4 组，各组多大由树决定，比如 25 / 22 / 15 / 8，不是 20 / 20 / 20 / 10。比例只需要小组数跟着细胞数走，这一条在每个格子里都成立；大小不均只影响每组的噪声，报告里给大小分布。组内细胞互为最近邻，
+    naive 和 memory 自然落到各自的组里，不需要标签告诉它。这和随机分组完全不同：随机分每组都是混合物，这里每组接近单一状态。
+    切分的层次树整棵留着，复查时直接往下切，不用重新聚类。</span></li>
+  <li><b>小格子照样保留。</b>
+    <span>格子里不到 20 个细胞，整格算一个小组，根本不需要坐标；只有三五个也算一个小组。不并到别的格子里去。
+    格子在 20 到几十个之间时，近邻数和 PCA 维数跟着规模缩：近邻数取 min(15, 格子数 − 1)，PCA 维数取 min(30, 该类合并数 / 5)。</span></li>
+</ol>
+
+<h2>② 挑 outlier：谁不该待在小组里</h2>
+<ol class="steps outl">
+  <li><b>在小组内部，逐个基因找"断层"。</b>
+    <span>检验的基因是这一类细胞重算坐标时用的那约 2000 个高变基因（已剔掉细胞周期和应激基因），不是全部基因：状态差异由这些基因定义，
+    其它基因偶尔爆发一下不该把细胞踢出去。对每个小组的每个检验基因，把组里的细胞按这个基因的表达（按测序深度归一、log2）排个序，
+    相邻两个值之间如果出现 8 倍以上的断层，断层外侧那几个细胞就在这个基因上"偏离"了；一个断层最多切出 3 个细胞、且不超过小组的 10%。
+    在任何一个检验基因上偏离的细胞就是 outlier。这是 MetaCells 2 的 gaps 规则，阈值固定，不需要人看，只跑一遍不迭代。</span></li>
+  <li><b>爆发式表达的基因不算数。</b>
+    <span>如果某个基因在一个格子里标出了超过 3% 的细胞，说明它是那种时不时爆发一下的基因，不是细胞真的不一样，整个格子忽略它。
+    MetaCells 2 的那个 3% 就是这个意思：保护基因，不是细胞的门槛。</span></li>
+  <li><b>outlier 不进任何小组，但留在表里，带原因。</b>
+    <span>它保护两类细胞：漏网的 doublet，以及格子里只有三五个、本来会被硬塞进邻居小组抹掉的稀有状态。后者正是"粗标签模糊化"的真正来源。</span></li>
+  <li><b>每个格子最多挑 25%。</b>
+    <span>超过就只取偏离最大的那 25%。这是防止某个格子被挑空、把比例弄歪。挑完之后小组变小也不解散，只在报告里标出，避免 MetaCells 2 那种连锁反应。</span></li>
+</ol>
+<p>MetaCells 2 真正需要人做的是三份名单（排除基因、lateral 基因、noisy 基因）加逐轮审看。这里的处置：排除基因用上游已算好的固定名单；lateral 基因用发表过的固定名单；noisy 基因用表达量下限和 3% 占比规则替代；逐轮审看取消，结果进报告。</p>
+
+<h2>③ 体检：mcRigor 在查什么</h2>
+<ol class="steps diag">
+  <li><b>查每个小组内部是不是同一种状态。</b>
+    <span>一家人的基因共表达模式是一致的。如果一个小组里混了 naive 和 memory 两种 T 细胞，基因之间的相关结构会出现异常。
+    mcRigor 把这个异常程度算出来，和"随机打乱"得到的基线比，超过基线就判可疑。
+    具体做法：取小组成员在 2000 个高变基因上的表达，算基因两两之间的相关矩阵，量它离"完全不相关"有多远；
+    再把每个基因在成员之间打乱一遍（相关被破坏、每个基因的分布不变）算同样的量，两者的比值就是这个小组的异质性分数。
+    基线是把每个细胞的数值在基因之间打乱后算出的同一比值。整套算法在 R 包里不到一百行，这里用 Python 重写，不引入 R。</span></li>
+  <li><b>它不看标签。</b>
+    <span>标签粗到只有"T cell"也不影响。粗标签下"标签纯度"永远是 100%，没有信息；要靠这种无标签的检验才能发现打包太粗。</span></li>
+  <li><b>基线在整个组织上算一次，存下来。</b>
+    <span>基线随小组大小变化，是一条曲线。按格子算的话小格子里小组太少，曲线不稳，所以按整个组织算。</span></li>
+</ol>
+<div class="callout warn"><b>"可疑"不等于"标错"。</b>
+分组时已经不跨标签了，可疑只说明这一组打包太粗、混了同一类型下的不同状态。处理方式是拆细，不是删掉。
+outlier 管的是"一个细胞混进了别人家"，体检管的是"一家人其实是两家"，两者互补。</div>
+
+<h2>④ 复查：可疑的小组怎么办</h2>
+<ol class="steps recheck">
+  <li><b>在层次树上往下切一刀。</b>
+    <span>可疑的小组在打包时留下的 walktrap 子树上一分为二，再体检一次。用的是第 ③ 步存下来的那条基线，不重新算，否则越拆基线越松，标准就漂了。</span></li>
+  <li><b>最小拆到 10 个就停。</b>
+    <span>只拆一层，20 最多变成 10。拆到底还不过的，打上 <code>residual_dubious</code> 标记保留，交给下游自己决定用不用。</span></li>
+  <li><b>可信的小组一个不动，任何细胞不重新洗牌。</b>
+    <span>和六月 Tabula Sapiens 那套"把所有可疑细胞倒在一起重新分"不同，这里只拆不合。原来的分组完整保留，父子关系可追溯，小组数量最多只涨一倍，还只涨可疑的那部分。</span></li>
+</ol>
+
+<h2>比例怎么保证</h2>
+<p>假设一个样本里有 10000 个 T 细胞、5000 个 B 细胞、500 个巨噬细胞。</p>
+<table>
+  <tr><th>类型</th><th class="num">细胞数</th><th class="num">打包后小组数（γ=20）</th><th class="num">假设两成小组可疑并全部拆开</th><th class="num">size 之和 + outlier</th></tr>
+  <tr><td>T 细胞</td><td class="num">10000</td><td class="num">500</td><td class="num">600</td><td class="num">10000</td></tr>
+  <tr><td>B 细胞</td><td class="num">5000</td><td class="num">250</td><td class="num">300</td><td class="num">5000</td></tr>
+  <tr><td>巨噬细胞</td><td class="num">500</td><td class="num">25</td><td class="num">30</td><td class="num">500</td></tr>
+  <tr><td>比例</td><td class="num">20 : 10 : 1</td><td class="num">20 : 10 : 1</td><td class="num">20 : 10 : 1</td><td class="num">精确</td></tr>
+</table>
+<div class="two">
+  <div class="callout ok"><b>小组数量大致跟着细胞数走。</b>
+  固定 γ 就保证了这一点；复查最多让可疑部分翻倍，outlier 每格子封顶 25%，整体偏差压在百分之十几以内。不做"每类各 50 个"那种平衡，
+  因为下游 GRN 工具（GRNBoost2、pySCENIC）不接受权重，比例一旦在这里弄歪，后面救不回来。</div>
+  <div class="callout ok"><b>任何时候都能精确还原。</b>
+  每个小组带 size，outlier 有计数。想知道某个样本里 T 细胞占多少，把 T 细胞小组的 size 加上 T 细胞 outlier 数就是 10000，一个不差。</div>
+</div>
+<p>顺带一句：这些小组不是生物学重复。500 个 T 细胞小组来自同一个样本，是同一份样本内部的 500 个采样点。跨条件比较时，重复的单位仍然是样本。</p>
+
+<h2>用什么工具</h2>
+<table>
+  <tr><th>环节</th><th>用什么</th><th>为什么</th></tr>
+  <tr><td>打包</td><td>SuperCell 的算法（kNN + walktrap，固定 γ），用 Python 在现有 dl2025 环境里写，不用 R 包</td><td>最快最简单；自带层次树，复查时拆分就是多切一刀；scanpy 和 igraph 已装，零新依赖</td></tr>
+  <tr><td>挑 outlier</td><td>MetaCells 2 的 deviant 规则，自己写，阈值固定</td><td>拿它的思想，不拿它的人工流程</td></tr>
+  <tr><td>体检</td><td>mcRigor 的算法用 Python 重写，不引入 R</td><td>核心不到百行（读自包源码）；用六月 Ear 组织的 R 版结果逐个 metacell 对数验证</td></tr>
+  <tr><td>复查</td><td>walktrap 树上切一层，地板 γ/2</td><td>确定性、不重洗牌、比例膨胀有上限</td></tr>
+</table>
+<p>不用 SEACells：慢、要分块、依赖难装，它的长处在已经分好块、做好嵌入的数据上体现不出来。不用 MetaCells 2 包本身：它不吃我们的 Harmony 嵌入，人工整理名单和逐轮审看正是要避免的，只借它的 outlier 概念。</p>
+
+<h2>固定参数</h2>
+<p>命令行可以覆盖，但不做逐数据集调参。</p>
+<table>
+  <tr><th>参数</th><th>默认</th><th>它影响什么</th></tr>
+  <tr><td>γ（每组几个细胞）</td><td>20</td><td>越小越不容易混状态，但小组更多、每组噪声更大</td></tr>
+  <tr><td>小组大小上限</td><td>1.5 γ = 30</td><td>walktrap 会切出 50 个的大组，大组几乎必被判可疑；超上限的在自己子图上继续切</td></tr>
+  <tr><td>复查地板</td><td>γ / 2 = 10</td><td>越低残留越少，但小组数量膨胀越多；不到 20 个的可疑小组直接留标记</td></tr>
+  <tr><td>最小体检大小</td><td>5</td><td>更小的小组统计量退化，记为"未检验"</td></tr>
+  <tr><td>重算坐标：高变基因 / PCA 维数 / 近邻数</td><td>2000（样本内高变）/ min(30, n/5) / min(15, n−1)</td><td>坐标按类型跨样本算；该类不到 100 个细胞时用全局坐标</td></tr>
+  <tr><td>lateral 基因名单</td><td>Tirosh 细胞周期 + van den Brink 解离应激</td><td>不让小组按分裂期或应激分组</td></tr>
+  <tr><td>outlier 规则</td><td>检验基因 = 该类 2000 高变基因；先把每个细胞缩放到统一深度；断层 ≥ max(8 倍, 格子内断层的 99.9% 分位)；每组每基因最多 3 个细胞且 ≤ 10%；基因标出 > 3% 细胞则忽略；至少 3 个基因偏离才算；每格子上限 25%</td><td>MetaCells 2 的规则加三道保护，实测后加的：它原本是给 UMI 数据和百细胞大组定的</td></tr>
+  <tr><td>mcRigor</td><td>Nrep=20、2000 基因、检验水平 0.05</td><td>Nrep=1 时基线噪声让可疑率虚高 8 个百分点；20 次仍只要几十秒</td></tr>
+  <tr><td>基线范围</td><td>整个组织</td><td>按类型算更贴合，但小类型不稳</td></tr>
+  <tr><td>随机种子</td><td>0</td><td>可复现</td></tr>
+</table>
+
+<h2>你会拿到什么</h2>
+<p>每个组织一个目录，放在 rsi 运行目录之外。建议独立根 <code>$OAK/data/sc/_metacell/&lt;batch&gt;/&lt;organ&gt;/</code>，这是唯一还要你拍板的事。</p>
+<table>
+  <tr><th>文件</th><th>内容</th></tr>
+  <tr><td><code>membership.parquet</code></td><td>每个细胞一行：进了哪个小组或者是 outlier（带原因）、样本、粗标签、细标签、原始小组还是拆出来的、体检结论</td></tr>
+  <tr><td><code>metacells.h5ad</code></td><td>每个小组一行：counts 之和、size、样本、粗标签、细标签多数票和纯度、体检结论、γ</td></tr>
+  <tr><td><code>threshold.tsv</code></td><td>这个组织的体检基线曲线，复查时复用的就是它</td></tr>
+  <tr><td><code>summary.json</code></td><td>细胞数、格子数、小组数、每格子 outlier 数、可疑率、拆分数、残留数、守恒检查是否通过</td></tr>
+  <tr><td><code>report.md</code></td><td>给人看的汇总</td></tr>
+</table>
+
+<h2>首轮实测（2026-09-06）</h2>
+<p>代码在 <code>eca-rsi-metacell/ecagrain/</code>，纯 Python，一条命令：<code>python -m ecagrain run &lt;final.h5ad&gt; &lt;outdir&gt;</code>。四个单元全部跑通，守恒检查全部通过。</p>
+<table>
+  <tr><th>单元</th><th class="num">细胞</th><th class="num">样本</th><th class="num">小组</th><th class="num">outlier</th><th class="num">体检可疑</th><th class="num">残留可疑（占细胞）</th><th class="num">用时</th></tr>
+  <tr><td>mca1.1 Bladder</td><td class="num">2193</td><td class="num">1</td><td class="num">143</td><td class="num">2.4%</td><td class="num">22.5%</td><td class="num">23.3%</td><td class="num">19 秒</td></tr>
+  <tr><td>mca3.0 Prostate</td><td class="num">19771</td><td class="num">15</td><td class="num">1313</td><td class="num">0.2%</td><td class="num">19.6%</td><td class="num">20.6%</td><td class="num">96 秒</td></tr>
+  <tr><td>Fu2022 半月板</td><td class="num">25357</td><td class="num">11</td><td class="num">1566</td><td class="num">1.5%</td><td class="num">26.6%</td><td class="num">27.8%</td><td class="num">193 秒</td></tr>
+  <tr><td>tabula-muris-facs Heart（Smart-seq2）</td><td class="num">3729</td><td class="num">30</td><td class="num">322</td><td class="num"><b>11.6%</b></td><td class="num">14.5%</td><td class="num">18.8%</td><td class="num">40 秒</td></tr>
+</table>
+<div class="two">
+  <div class="callout ok"><b>mcRigor 的 Python 重写和 R 包对上了。</b>
+  用 R 自己选的基因时统计量逐个一致到十亿分之一；用我们自己的基因选择时（与 Seurat 重合 1949/2000）相关 1.0000，判定一致 91%，差的是两边各自的随机置换。</div>
+  <div class="callout warn"><b>"可疑"跟小组大小走，不跟细标签混合走。</b>
+  Bladder 里残留可疑的小组细标签纯度反而更高（0.87 对 0.79）。大组更异质、检验也更有力；小组混了标签也检不出来。
+  mcRigor 抓的是同类型内的连续状态跨度。细标签纯度是另一条独立的诊断信息，两者都在输出里。</div>
+</div>
+<div class="callout warn"><b>两件没解决的事。</b>
+每个数据集都有两成左右的细胞落在残留可疑里，多数是不到 20 个、按规则不拆的小组；把地板降到 5 只是把它们送进更没有检验力的复检，不做，带标记交给下游。
+Smart-seq2 数据的 outlier 率仍有 12%（UMI 数据只有 0.2% 到 2.4%），三道保护不够，全长数据在图谱里是少数，先记录。</div>
+
+<h2>和六月 Tabula Sapiens 方案的区别</h2>
+<p>六月那套是 SuperCell 2.0 加 mcRigor，可疑的细胞全部倒在一起按 γ = 10、5、3 重新分。它证明了两件事：单一 γ 会系统性冤枉上皮、分泌、稀有类型；
+变粒度补救后保留率能从七成拉到 97% 以上。这次沿用这两条教训，加上 outlier 一步，把补救改成"树上原地切一刀、只切一层"，
+目的是把小组数量的膨胀控制住，让比例大致对上，而且全程不需要人插手。</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="t d">
+  <title id="t">eca-grain — GRAIN</title>
+  <desc id="d">Three grains, each a soft blob holding a handful of cell dots, inside a lineage island. An abstract mark, not a data plot.</desc>
+  <rect width="512" height="512" rx="96" fill="#142D36"/>
+  <!-- lineage island: translucent fill with an outline, the report-page convention -->
+  <path d="M96 288C72 214 128 128 214 108C300 88 402 126 424 210C446 294 386 396 296 414C206 432 120 362 96 288Z" fill="#258B81" fill-opacity="0.18" stroke="#258B81" stroke-opacity="0.7" stroke-width="6"/>
+  <!-- grains -->
+  <g fill="#F5F7F2" fill-opacity="0.92">
+    <circle cx="188" cy="204" r="58"/>
+    <circle cx="318" cy="180" r="48"/>
+    <circle cx="272" cy="312" r="66"/>
+  </g>
+  <!-- cells inside each grain -->
+  <g fill="#142D36">
+    <circle cx="168" cy="190" r="9"/><circle cx="198" cy="180" r="9"/><circle cx="212" cy="212" r="9"/><circle cx="182" cy="226" r="9"/><circle cx="160" cy="216" r="9"/>
+    <circle cx="304" cy="166" r="9"/><circle cx="334" cy="172" r="9"/><circle cx="320" cy="198" r="9"/><circle cx="298" cy="196" r="9"/>
+    <circle cx="246" cy="296" r="9"/><circle cx="274" cy="284" r="9"/><circle cx="300" cy="304" r="9"/><circle cx="286" cy="336" r="9"/><circle cx="256" cy="332" r="9"/><circle cx="272" cy="312" r="9"/>
+  </g>
+  <!-- an outlier cell left outside, still on the ledger -->
+  <circle cx="392" cy="300" r="9" fill="#E8A33D"/>
+</svg>
