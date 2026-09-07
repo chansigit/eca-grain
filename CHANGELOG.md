@@ -4,6 +4,11 @@ All notable changes to eca-grain. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 - 2026-09-07
+
+### Changed
+- The report page (`report.html`) is written in English; figures already were.
+
 ## 0.2.0 - 2026-09-07
 
 ### Changed

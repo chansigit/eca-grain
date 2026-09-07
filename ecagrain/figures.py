@@ -363,7 +363,7 @@ def figures(run_dir):
             f"<td>{int(cells[c])}</td><td>{int(mcn[c])}</td><td>{int(outl[c])}</td></tr>"
             for j, c in enumerate(labels, 1)
         )
-        table = f"<table><tr><th>#</th><th>coarse lineage</th><th>cells</th><th>metacells</th><th>outliers</th></tr>{rows}</table>"
+        table = f"<table><tr><th>#</th><th>coarse lineage</th><th>cells</th><th>grains</th><th>outliers</th></tr>{rows}</table>"
     return s, out, table
 
 
@@ -373,26 +373,26 @@ def write_html(run_dirs, out_path):
         s, figs, table = figures(rd)
         q = " / ".join(f"{v:.0f}" for v in s["size_quantiles"].values())
         lines = (
-            f"<li>细胞 {s['n_cells']}，样本 {s['n_samples']}，lineage {s['n_labels']}，格子 {s['n_blocks']}</li>"
-            f"<li>metacell {s['n_metacells_final']} 个，大小 0/10/50/90/100% 分位：{q}（γ = {s['params']['gamma']}）</li>"
-            f"<li>outlier {s['n_outliers']}（{s['outlier_rate']:.1%}）；守恒检查 {s['conservation']}</li>"
+            f"<li>{s['n_cells']} cells, {s['n_samples']} samples, {s['n_labels']} lineages, {s['n_blocks']} blocks</li>"
+            f"<li>{s['n_metacells_final']} grains; size quantiles 0/10/50/90/100%: {q} (γ = {s['params']['gamma']})</li>"
+            f"<li>{s['n_outliers']} outliers ({s['outlier_rate']:.1%}); cell conservation {s['conservation']}</li>"
         )
         imgs = "".join(f'<figure><img src="data:image/png;base64,{b}"></figure>' for b in figs.values())
-        tbl = f"<details open><summary>lineage 编号对照表</summary>{table}</details>" if table else ""
+        tbl = f"<details open><summary>Lineage numbers</summary>{table}</details>" if table else ""
         parts.append(
             f"<section><h2>{Path(rd).name} <small>{s['input']}</small></h2><ul>{lines}</ul><div class='grid'>{imgs}</div>{tbl}</section>"
         )
-    html = f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>ecagrain 结果</title>
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>eca-grain results</title>
 <style>body{{font:15px/1.6 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;color:#1f2933;max-width:1500px;margin:0 auto;padding:20px}}
 h2{{border-top:1px solid #d9dee3;padding-top:10px;margin:24px 0 2px}} h2 small{{font-size:12px;color:#52606d;font-weight:400;display:block}}
 .grid{{display:grid;grid-template-columns:1fr;gap:4px}} figure{{margin:0}}
 img{{width:100%;height:auto;border:1px solid #e5e7eb;border-radius:4px;display:block}} ul{{font-size:14px;color:#52606d;margin:2px 0 6px}}
 table{{border-collapse:collapse;font-size:12px;margin-top:8px}} td,th{{border:1px solid #d9dee3;padding:2px 8px;text-align:left}} th{{background:#f1f4f7}}
 details summary{{cursor:pointer;color:#52606d;font-size:14px;margin-top:8px}}</style></head><body>
-<h1>ecagrain 结果（最终 metacell）</h1>
-<p>metacell 按 样本 × 粗 lineage 构建；可视化：metacell 矩阵重新算 HVG → PCA → Leiden 1.0 得到 metacell 聚类。每个单元两张图：
-上图左 = metacell（不透明、大小 ∝ 细胞数）叠在单细胞（半透明）UMAP 上，都按粗 lineage 着色；右 = metacell 自身 UMAP（Leiden 聚类编号在上层，底层半透明色块 = 各 lineage 的岛），共用右侧图例。
-下图 = marker 热图：行 = 每个 metacell 聚类前 5 个 marker 去重，列按聚类分块、块内层次聚类、块间按块平均谱层次聚类排序，色条 = 粗 lineage。</p>
+<h1>eca-grain results (final grains)</h1>
+<p>Grains are built inside sample × coarse-lineage blocks. For display, the grain matrix is re-analysed (HVG → PCA → Leiden 1.0) to give grain clusters. Two figures per unit:
+top left = grains (opaque, dot size ∝ cells) over the single cells (translucent) on the unit UMAP, both coloured by coarse lineage; top right = UMAP of the grains themselves (Leiden cluster numbers on top, translucent islands underneath = lineages), sharing the legend on the right.
+Bottom = marker heatmap: rows = top-5 markers per grain cluster (de-duplicated); columns split by cluster, hierarchically ordered inside each split, splits ordered by clustering their mean profiles; strip = coarse lineage.</p>
 {"".join(parts)}</body></html>"""
     Path(out_path).write_text(html)
     return out_path
