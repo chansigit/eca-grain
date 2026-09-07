@@ -62,8 +62,8 @@ Three guarantees hold on every run:
 | Recheck | Dubious grains are split in two on their own subgraph (floor γ/2, one level) and re-tested against the saved threshold. Failures stay as `residual_dubious`. | `run.py` |
 | Deliver | Conservation check, summed counts, mean embeddings, membership ledger, summary and the report page. | `run.py`, `figures.py` |
 
-Blocked genes affect HVG selection only and are never removed from the
-output matrix: Tirosh cell-cycle genes, the van den Brink dissociation-stress
+The output keeps every gene of the input; blocked genes affect HVG selection
+only and are never removed from the output matrix: Tirosh cell-cycle genes, the van den Brink dissociation-stress
 panel (taken from [OSP](https://github.com/chansigit/osp)), heat-shock genes
 (`HSPA/B/D/E/H`, `HSP90`, `DNAJA/B`), mitochondrial and ribosomal genes, and
 `MALAT1`. Haemoglobin genes are deliberately kept so erythrocyte datasets

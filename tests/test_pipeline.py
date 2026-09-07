@@ -49,6 +49,7 @@ def test_run_conserves_cells_and_writes_report(unit, tmp_path):
     mem = pd.read_parquet(out / "membership.parquet")
 
     assert s["conservation"] == "ok"
+    assert mc.n_vars == a.n_vars and list(mc.var_names) == list(a.var_names)  # whole genome kept
     assert len(mem) == a.n_obs
     assert mc.obs["size"].sum() + s["n_outliers"] == a.n_obs
     assert set(mem.loc[mem.status == "member", "metacell_id"]) == set(mc.obs_names)
