@@ -334,7 +334,7 @@ def figures(run_dir):
         for spine in ax_h.spines.values():
             spine.set_linewidth(0.4)
     fig.legend(
-        handles=[Patch(color=cmap[c], label=lab(c, j)) for j, c in enumerate(labels, 1)],
+        handles=[Patch(color=cmap[c], label=lab(c, j)) for j, c in enumerate(labels, 1) if (lin_mc == c).sum() > 0],
         loc="upper left",
         bbox_to_anchor=(0.903, 0.93),
         fontsize=F_LEGEND - 1,
@@ -375,7 +375,7 @@ def write_html(run_dirs, out_path):
         lines = (
             f"<li>细胞 {s['n_cells']}，样本 {s['n_samples']}，lineage {s['n_labels']}，格子 {s['n_blocks']}</li>"
             f"<li>metacell {s['n_metacells_final']} 个，大小 0/10/50/90/100% 分位：{q}（γ = {s['params']['gamma']}）</li>"
-            f"<li>outlier {s['n_outliers']}（{s['outlier_rate']:.1%}）；守恒检查 {s['conservation']}；{s['elapsed_s']} 秒</li>"
+            f"<li>outlier {s['n_outliers']}（{s['outlier_rate']:.1%}）；守恒检查 {s['conservation']}</li>"
         )
         imgs = "".join(f'<figure><img src="data:image/png;base64,{b}"></figure>' for b in figs.values())
         tbl = f"<details open><summary>lineage 编号对照表</summary>{table}</details>" if table else ""

@@ -14,15 +14,17 @@ from .hvg import vst_hvg
 
 def label_embedding(counts, samples, lateral, n_hvg, n_pcs, seed):
     """counts: csr cells×genes of one coarse label (all samples). Returns (coords, tested_gene_mask).
-    HVG per sample when >1 sample (batch-only genes drop out); blocked genes (lateral + heat shock + mt/ribo/Malat1) never enter."""
+    HVG per sample when >1 sample (batch-only genes drop out); blocked genes (lateral + heat shock + mt/ribo/Malat1) are
+    removed before ranking, so n_hvg genes are still selected."""
     a = AnnData(X=counts.copy())
-    hv = vst_hvg(counts, n_hvg, batch=np.asarray(samples, dtype=str)) & ~lateral
+    hv = vst_hvg(counts, n_hvg, batch=np.asarray(samples, dtype=str), exclude=lateral)
     sc.pp.normalize_total(a, target_sum=1e4)
     sc.pp.log1p(a)
     sub = a[:, hv].copy()
     sc.pp.scale(sub, max_value=10)
     n_comp = int(max(2, min(n_pcs, sub.n_obs // 5, sub.n_vars - 1)))
-    sc.tl.pca(sub, n_comps=n_comp, random_state=seed, svd_solver="arpack")
+    # full LAPACK SVD: BLAS-3, ~6x faster than arpack on these dense n×2000 matrices, identical components
+    sc.tl.pca(sub, n_comps=n_comp, random_state=seed, svd_solver="full")
     return np.asarray(sub.obsm["X_pca"]), hv
 
 

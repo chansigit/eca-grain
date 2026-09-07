@@ -117,7 +117,7 @@ G2M_GENES = [
 # are blocked as a stress programme on top of the dissociation panel.
 FAMILY_REGEX = {
     "mt": r"^MT-",
-    "ribo": r"^RP[SL]\d",
+    "ribo": r"^(RP[SL]\d+[A-Z]?\d*(L\d*)?|RPLP\d|RPSA)$",  # RPS/RPL proteins and paralogs; not RPS6K kinases or pseudogenes
     "hsp": r"^(HSP[ABDEH]\d|HSP90|DNAJ[AB]\d)",
 }
 

@@ -204,3 +204,13 @@ dubious / 阈值 / 拆分是中间过程，留在 summary.json 和 obs 列里，
   本设计吸收"变粒度必需、阈值复用"两条，改为树上原地切一层，以控制比例漂移。
 - mcRigor：Liu & Li, Nat Commun 2025 (s41467-025-63626-5)。机制以本地包源码为准。
 - MC2 outlier 规则：Ben-Kiki et al. 2022 Genome Biology，`metacells` 包 deviants 默认参数。
+
+## 2026-09-07（下午）：审查、0.2.0、批量输出位置
+
+- 代码审查（Prostate 19,771 细胞 cProfile）：PCA arpack 约 60 s、mcRigor `t_stat` 的 p×p 协方差 35 s、结果页 27 s（主要是 umap 的 numba JIT）。
+  改为 LAPACK full SVD（分量完全一致，5.9 s）和 n×n Gram 矩阵形式（恒等式，差 1e-15）。`elapsed_s` 原先不含出图，现在含；旧口径记为 `elapsed_pipeline_s`。
+- 用户要求 HVG 必须补足 2000：屏蔽基因原先是先排名再剔除（Prostate 上皮只剩 1851 个），现在先算全基因 dispersion 表、剔除屏蔽基因后再取前 2000。分组结果因此略有变化（Bladder 137 → 146 grain）。
+- 顺手修的隐患：untested 小 grain 不再走 dubious 判定；全单元无可检验 grain 不再崩；样本名含 `|` 直接报错；核糖体正则不再误伤 RPS6K 激酶和假基因（仅在输入没有 OSP `ribo` 列时用到）；`membership.level` 改为整数；热图图例只列有 grain 的 lineage。
+- 批量输出位置（用户拍板）：与 `rsi/` 并列的 `eca-pp/<Tissue>/grain/`，里面直接是 `report.html`、`metacells.h5ad`、`membership.parquet`、`summary.json` 等。
+  首批：mca1.1（30）、mca2.0（11）、mca3.0（29）、tabula-muris-facs（20）、tabula-muris-drop（12），共 102 个单元、116 万细胞，
+  sbatch array（`$SCRATCH/eca-grain-jobs/`，normal 分区，4 CPU / 24 GB / 2 h，并发 12）。

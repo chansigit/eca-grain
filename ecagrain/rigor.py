@@ -28,11 +28,13 @@ def lognorm_hvg(counts, n_hvg=2000):
 
 
 def t_stat(dat):
+    """T = ||corr − I||_F / sqrt(p (p − 0.5)) with corr = cᵀc/(n−1), evaluated through the n×n Gram matrix G = c cᵀ:
+    ||cᵀc||_F = ||c cᵀ||_F and tr(cᵀc) = tr(G), so no p×p matrix is formed (n²p instead of np² work; equal to 1e-15)."""
     n, p = dat.shape
     c = dat - dat.mean(0)
-    cov = c.T @ c / (n - 1)
-    cov[np.diag_indices(p)] -= 1.0
-    return float(np.linalg.norm(cov) / np.sqrt(p * (p - 0.5)))
+    G = c @ c.T
+    fro2 = (G * G).sum() / (n - 1) ** 2 - 2.0 * np.trace(G) / (n - 1) + p
+    return float(np.sqrt(max(fro2, 0.0)) / np.sqrt(p * (p - 0.5)))
 
 
 def scale_cols(m):

@@ -17,9 +17,11 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
   PYTHONPATH=/scratch/users/chensj16/projects/eca-grain $PY -m ecagrain run <final.h5ad> <outdir> [--sample-col project]
   ```
 
-- 运行产物一律放仓库外。现用开发输出目录 `$SCRATCH/eca-metacell-dev/`：`bladder` / `fu2022` / `mca3_prostate` /
-  `tmfacs_heart` 四个参考单元各有 `report.html`，合页 `results.html`；`*_v*`、`*_fine`、`*_coarse` 目录已过期。
-  正式输出根目录未定（用户："先不要管输出位置，现在是开放方法"）。
+- 运行产物一律放仓库外。**正式输出**（用户 2026-09-07 拍板）：与 `rsi/` 并列的 `eca-pp/<Tissue>/grain/`，
+  即 `$OAK` 下 `.../<dataset>/eca-pp/<Tissue>/grain/{report.html,metacells.h5ad,membership.parquet,summary.json,...}`。
+  批量跑用 `$SCRATCH/eca-grain-jobs/`（`units.txt` 清单 + `grain_array.sbatch`，日志在 `logs/`）。
+  开发用参考输出 `$SCRATCH/eca-metacell-dev/`：`bladder` / `fu2022` / `mca3_prostate` / `tmfacs_heart` 各有 `report.html`，
+  合页 `results.html`；`*_v*`、`*_fine`、`*_coarse` 目录已过期。
 - 输入是 eca-rsi 批量跑的 release（`$OAK` 下各数据集 `.../rsi/units/<unit>/release/final.h5ad`）。
   旧结构的 Fu2022 release 没有 `eca_sample_id`，用 `--sample-col project`。
 - 给用户只报结果目录，不给投射 URL（用户要求）。节点无 CJK 字体，图内文字一律英文。
@@ -60,5 +62,5 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
 
 - Smart-seq2（tabula-muris-facs）outlier 约 12%，UMI 数据 0.1% 到 2.4%。
 - 每单元约两成细胞在 `residual_dubious` grain 里；mcRigor 的 dubious 更多跟 grain 大小相关，而非标签混杂。
-- 输出根目录、对 86+ 个已发布单元的批量运行尚未开始。
+- 首批 102 个单元（mca1.1 / mca2.0 / mca3.0 / tabula-muris-facs / tabula-muris-drop）的批量运行 2026-09-07 提交；其他数据集未跑。
 - `validate-rigor` 依赖六月 `supercell2.0/outputs/<tissue>` 的 R 结果目录（用户旧工作目录，不在本仓库）。

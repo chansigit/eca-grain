@@ -53,6 +53,8 @@ def load(h5ad, sample_col, label_col, audit_col, counts_layer, embed_key):
             "audit": a.obs[audit_col].astype(str).to_numpy(),
         }
     )
+    if obs["sample"].str.contains("|", regex=False).any():
+        raise SystemExit(f"sample ids must not contain '|' (block separator): {sample_col!r} in {h5ad}")
     obs["block"] = obs["sample"] + "|" + obs["label"]
     gpca = np.asarray(a.obsm[embed_key]) if embed_key in a.obsm else None
     ghv = a.var["highly_variable"].to_numpy() if "highly_variable" in a.var else None
@@ -150,8 +152,13 @@ def run(h5ad, outdir, **kw):
 
     ids0 = [m for m in sorted(groups) if m >= 0]
     st = stats_for(ids0)
-    thre = rigor.threshold_table(st.dropna(subset=["T_org"]), p["test_cutoff"])
-    st["dubious"] = rigor.classify(st["size"], st["TT_div"], thre)
+    tested = st["T_org"].notna() if "T_org" in st else pd.Series(False, index=st.index)
+    if tested.any():
+        thre = rigor.threshold_table(st[tested], p["test_cutoff"])
+        st["dubious"] = rigor.classify(st["size"], st["TT_div"], thre) & tested
+    else:
+        thre = pd.DataFrame(columns=["size", "thre"])
+        st["dubious"] = False
     st["level"], st["parent"] = 0, -1
 
     # ---- ④ recheck: split dubious metacells in place (walktrap on their own subgraph), floor γ/2, one level
@@ -247,7 +254,7 @@ def run(h5ad, outdir, **kw):
         status=np.where(is_out, "outlier", "member"),
         n_flag_genes=n_flag,
         build_id=build_id,
-        level=np.where(assigned, st["level"].reindex(mc_of).to_numpy(), -1),
+        level=np.where(assigned, st["level"].reindex(mc_of).fillna(-1).to_numpy(), -1).astype(int),
         mcRigor=[status.get(m) for m in mc_of],
     )
     membership.to_parquet(outdir / "membership.parquet", index=False)
@@ -286,10 +293,12 @@ def run(h5ad, outdir, **kw):
         "blocks": blocks.reset_index().to_dict(orient="records"),
     }
     (outdir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
-    (outdir / "report.md").write_text(report(summary, blocks))
     from .figures import write_html  # per-unit page = the agreed template (two figures)
 
     write_html([outdir], outdir / "report.html")
+    summary["elapsed_pipeline_s"], summary["elapsed_s"] = summary["elapsed_s"], round(time.time() - t0, 1)
+    (outdir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
+    (outdir / "report.md").write_text(report(summary, blocks))
     return summary
 
 

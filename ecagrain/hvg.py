@@ -1,7 +1,8 @@
 """Seurat-vst style highly variable genes on raw counts, without scikit-misc (its loess binary is broken in the venv).
 Trend log10(var) ~ log10(mean) fitted with statsmodels lowess (local linear, span 0.3) instead of loess (local quadratic);
 standardized variance with values clipped at sqrt(N). With `batch`, genes are ranked per batch and combined the
-scanpy way (number of batches where the gene is in the top n, then median rank)."""
+scanpy way (number of batches where the gene is in the top n, then median rank). The dispersion table is always
+computed on all genes; `exclude`d genes are dropped before ranking, so the mask still holds n_top genes."""
 
 from __future__ import annotations
 
@@ -34,29 +35,34 @@ def standardized_variance(X, span=0.3):
     return out
 
 
-def vst_hvg(X, n_top=2000, batch=None, min_cells_per_batch=10):
-    """Boolean mask of the n_top most variable genes."""
+def _rank_desc(v, cand):
+    """Rank (0 = most variable) among candidate genes only; non-candidates get +inf."""
+    r = np.full(len(v), np.inf)
+    idx = np.flatnonzero(cand)
+    r[idx[np.argsort(-v[idx], kind="stable")]] = np.arange(len(idx))
+    return r
+
+
+def vst_hvg(X, n_top=2000, batch=None, min_cells_per_batch=10, exclude=None):
+    """Boolean mask of the n_top most variable genes among those not excluded."""
     X = sparse.csr_matrix(X)
+    cand = np.ones(X.shape[1], bool) if exclude is None else ~np.asarray(exclude, bool)
+    n_top = min(n_top, int(cand.sum()))
+    mask = np.zeros(X.shape[1], bool)
     if batch is None or len(np.unique(batch)) < 2:
-        v = standardized_variance(X)
-        mask = np.zeros(X.shape[1], bool)
-        mask[np.argsort(-v, kind="stable")[:n_top]] = True
+        r = _rank_desc(standardized_variance(X), cand)
+        mask[r < n_top] = True
         return mask
     batch = np.asarray(batch)
-    ranks, in_top = [], []
+    ranks = []
     for b in np.unique(batch):
         idx = np.flatnonzero(batch == b)
-        if len(idx) < min_cells_per_batch:
-            continue
-        v = standardized_variance(X[idx])
-        r = np.empty(len(v))
-        r[np.argsort(-v, kind="stable")] = np.arange(len(v))
-        ranks.append(r)
-        in_top.append(r < n_top)
+        if len(idx) >= min_cells_per_batch:
+            ranks.append(_rank_desc(standardized_variance(X[idx]), cand))
     if not ranks:
-        return vst_hvg(X, n_top)
-    nb, med = np.sum(in_top, 0), np.median(ranks, 0)
+        return vst_hvg(X, n_top, exclude=exclude)
+    ranks = np.vstack(ranks)
+    nb, med = (ranks < n_top).sum(0), np.median(ranks, 0)
     order = np.lexsort((med, -nb))  # most batches first, then best median rank
-    mask = np.zeros(X.shape[1], bool)
-    mask[order[:n_top]] = True
+    mask[order[cand[order]][:n_top]] = True
     return mask

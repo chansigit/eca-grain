@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eca-grain"   # PyPI distribution name; import name stays `ecagrain`
-version = "0.1.0"
+version = "0.2.0"
 description = "GRAIN: Guarded Rigor-Audited In-lineage Neighborhoods. One-pass grains (metacell-style aggregates) from released ECA-RSI units."
 readme = "README.md"
 license = "MIT"
