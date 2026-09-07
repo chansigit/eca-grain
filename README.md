@@ -112,8 +112,8 @@ per machine.
 
 | File | Content |
 | --- | --- |
-| `metacells.h5ad` | One row per grain. `X` = summed counts. `obs`: `size`, `sample`, `label` (lineage), `block`, `audit_majority` / `audit_purity` (fine label), `level`, `build_id` / `parent_build_id`, `mcRigor` status (`trustworthy`, `residual_dubious`, `untested`), `TT_div`, `n_test_genes`, `gamma`. `obsm`: `X_umap_mean`, `X_pca_harmony_mean`. `uns["ecagrain"]`: version, parameters, columns, input path. |
-| `membership.parquet` | One row per input cell: `cell`, `sample`, `label`, `audit`, `block`, `metacell_id` (empty for outliers), `status` (`member` / `outlier`), `n_flag_genes`, `build_id`, `level`, `mcRigor`, `umap_1` / `umap_2` (the unit's cell UMAP, so the report page needs no input file). |
+| `grains.h5ad` | One row per grain. `X` = summed counts. `obs`: `size`, `sample`, `label` (lineage), `block`, `audit_majority` / `audit_purity` (fine label), `level`, `build_id` / `parent_build_id`, `mcRigor` status (`trustworthy`, `residual_dubious`, `untested`), `TT_div`, `n_test_genes`, `gamma`. `obsm`: `X_umap_mean`, `X_pca_harmony_mean`. `uns["ecagrain"]`: version, parameters, columns, input path. |
+| `membership.parquet` | One row per input cell: `cell`, `sample`, `label`, `audit`, `block`, `grain_id` (empty for outliers), `status` (`member` / `outlier`), `n_flag_genes`, `build_id`, `level`, `mcRigor`, `umap_1` / `umap_2` (the unit's cell UMAP, so the report page needs no input file). |
 | `threshold.tsv` | The unit-level mcRigor threshold curve by grain size. |
 | `summary.json`, `report.md` | Counts by stage and status, size quantiles, audit purity, timing (`elapsed_s` includes the report page, `elapsed_pipeline_s` does not), and a per-block table with the outlier fold used. |
 | `report.html` | Self-contained page: two square UMAPs sharing a lineage legend (grains over translucent raw cells; a grain-level UMAP with Leiden clusters over concave-hull lineage islands) and a marker heatmap split by grain cluster. |

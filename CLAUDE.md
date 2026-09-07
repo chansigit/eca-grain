@@ -18,7 +18,7 @@ counts 求和，**输出保留全部基因**），供 GRN 推断等下游使用�
   ```
 
 - 运行产物一律放仓库外。**正式输出**（用户 2026-09-07 拍板）：与 `rsi/` 并列的 `eca-pp/<Tissue>/grain/`，
-  即 `$OAK` 下 `.../<dataset>/eca-pp/<Tissue>/grain/{report.html,metacells.h5ad,membership.parquet,summary.json,...}`。
+  即 `$OAK` 下 `.../<dataset>/eca-pp/<Tissue>/grain/{report.html,grains.h5ad,membership.parquet,summary.json,...}`。
   批量跑用 `$SCRATCH/eca-grain-jobs/`（`units.txt` 清单 + `grain_array.sbatch`，日志在 `logs/`）。
   开发用参考输出 `$SCRATCH/eca-metacell-dev/`：`bladder` / `fu2022` / `mca3_prostate` / `tmfacs_heart` 各有 `report.html`，
   合页 `results.html`；`*_v*`、`*_fine`、`*_coarse` 目录已过期。

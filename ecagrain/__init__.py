@@ -4,4 +4,4 @@ Aggregate a released ECA-RSI unit into grains (about γ expression-similar cells
 build (SuperCell algorithm) → outlier (MetaCells 2 gaps rule) → diagnose (mcRigor port) → recheck (split in place).
 Design record: docs/design.md."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -28,7 +28,7 @@ def validate(tissue_dir, nrep=1, seed=0, test_cutoff=0.05):
     rows = {
         m: r
         for m, idx in memb.groupby(memb).indices.items()
-        if (r := rigor.metacell_stats(L, np.asarray(idx), rng, 0.1, nrep))
+        if (r := rigor.grain_stats(L, np.asarray(idx), rng, 0.1, nrep))
     }
     st = pd.DataFrame.from_dict(rows, orient="index")
     st["TT_div"] = rigor.tt_div(st)

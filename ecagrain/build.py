@@ -111,5 +111,5 @@ def enforce_cap(g, memb, gamma, cap):
 
 
 def split_in_place(g, members):
-    """Recheck: walktrap on the induced subgraph of one metacell, cut in two (more only if disconnected)."""
+    """Recheck: walktrap on the induced subgraph of one grain, cut in two (more only if disconnected)."""
     return cut(g.induced_subgraph([int(m) for m in members]), 2)

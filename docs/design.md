@@ -224,3 +224,10 @@ dubious / 阈值 / 拆分是中间过程，留在 summary.json 和 obs 列里，
 - 报告页自包含（细胞 UMAP 存进 `membership.parquet`）；Leiden 固定 igraph 实现；分阶段日志；`__main__` 默认设 `NUMBA_CACHE_DIR`
   （报告页冷 55 s → 热 25 s，umap 导入的 7 s 去不掉）；`run.py` 拆成阶段函数；补了 gap 规则、cap、untested 守卫、PCA 等价四个测试。
 - 命名（文件仍叫 `metacells.h5ad`、列叫 `metacell_id`）待用户决定。
+
+## 2026-09-07（夜）：0.4.0，输出命名统一为 grain（用户："改"）
+
+- `metacells.h5ad` → `grains.h5ad`；grain 编号 `mc00001` → `g00001`；`membership.parquet` / `viz_clusters.tsv` 的 `metacell_id` → `grain_id`；
+  `summary.json` 的 `n_metacells_build` / `n_metacells_final` → `n_grains_build` / `n_grains`（格子表同理）；图题与 `report.md` 改说 grains。
+  `mcRigor` 列保留方法名。代码内部 `rigor.metacell_stats` → `grain_stats`。本文档此前各节里的 metacell 仍按页首说明理解为 grain。
+- 102 个单元用 0.4.0 全部重跑（含 0.3.0 的报告页改动），旧 `metacells.h5ad` 删除。

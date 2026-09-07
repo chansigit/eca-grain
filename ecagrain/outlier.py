@@ -1,5 +1,5 @@
 """Cell-level outliers, adapted from MetaCells 2 find_deviant_cells (gaps policy), fixed thresholds, one pass.
-Tested genes = the label's HVGs. A cell is deviant on a gene when, inside its metacell, a ≥ `fold` (log2) gap
+Tested genes = the label's HVGs. A cell is deviant on a gene when, inside its grain, a ≥ `fold` (log2) gap
 separates it (with at most `allowed` other cells) from the rest. Genes that flag > `noisy_frac` of the block's
 cells are bursty, not informative, and are ignored. Outliers are capped at `max_cell_frac` per block."""
 
@@ -9,7 +9,7 @@ import numpy as np
 
 
 def gap_flags(V, fold, allowed):
-    """V: cells×genes log2 values of one metacell → bool cells×genes (deviant on gene via top or bottom tail)."""
+    """V: cells×genes log2 values of one grain → bool cells×genes (deviant on gene via top or bottom tail)."""
     n, p = V.shape
     order = np.argsort(V, axis=0, kind="stable")
     Vs = np.take_along_axis(V, order, axis=0)
@@ -41,10 +41,10 @@ def find_outliers(
     min_flag_genes=3,
     gap_quantile=0.999,
 ):
-    """counts: csr block cells × all genes; tested: gene indices; members_list: local index arrays per metacell.
+    """counts: csr block cells × all genes; tested: gene indices; members_list: local index arrays per grain.
     Returns (outlier bool per block cell, number of flagging genes per cell, fold threshold used).
-    Two guards on top of MC2's rule, both needed for small (γ≈20) metacells and non-UMI data:
-    the fold threshold is max(fold, block-wide `gap_quantile` of all within-metacell gaps), so technologies with
+    Two guards on top of MC2's rule, both needed for small (γ≈20) grains and non-UMI data:
+    the fold threshold is max(fold, block-wide `gap_quantile` of all within-grain gaps), so technologies with
     noisier counts (Smart-seq2 amplification, dropouts) do not flag half the cells; and a cell must be flagged
     on ≥ `min_flag_genes` genes, since a single-gene burst is noise while a foreign cell deviates on many."""
     n_cells = counts.shape[0]

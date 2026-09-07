@@ -1,8 +1,8 @@
 """mcRigor DETECT (Liu & Li, Nat Commun 2025) re-implemented from the R package source
 (R/mcRigor_function.R + src/mc_test_stats.cpp). No R involved.
 
-Per metacell: z-score its cells × HVG matrix per gene, T = ||corr − I||_F / sqrt(p (p − 0.5)).
-TT_div = T(data) / T(each gene column shuffled across cells)  — the metacell's heterogeneity score.
+Per grain: z-score its cells × HVG matrix per gene, T = ||corr − I||_F / sqrt(p (p − 0.5)).
+TT_div = T(data) / T(each gene column shuffled across cells)  — the grain's heterogeneity score.
 Null    = T(each cell row shuffled across genes) / T(that, column-shuffled), Nrep times.
 Threshold per size = (1 − cutoff) quantile of the null, lowess-smoothed over size; TT_div above it = dubious.
 Deviation from R kept on purpose: R uses ALL genes instead of the HVGs whenever n_genes <= n_cells; we always use HVGs."""
@@ -46,7 +46,7 @@ def scale_cols(m):
     return c
 
 
-def metacell_stats(logdata_hvg, members, rng, gene_filter=0.1, nrep=1):
+def grain_stats(logdata_hvg, members, rng, gene_filter=0.1, nrep=1):
     """logdata_hvg: csr cells × hvg. None when size < 2 or fewer than 2 genes pass the expressed-in-10% filter."""
     n = len(members)
     if n < 2:

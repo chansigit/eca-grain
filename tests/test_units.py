@@ -32,7 +32,7 @@ def test_t_stat_gram_equals_pxp():
     rng = np.random.default_rng(1)
     for n, p in ((5, 40), (20, 800), (37, 1500)):
         x = rng.normal(size=(n, p))
-        x[:, :3] = 0  # constant genes stay unscaled, as in metacell_stats
+        x[:, :3] = 0  # constant genes stay unscaled, as in grain_stats
         dat = scale_cols(x)
         c = dat - dat.mean(0)
         cov = c.T @ c / (n - 1)

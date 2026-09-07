@@ -4,6 +4,17 @@ All notable changes to eca-grain. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.4.0 - 2026-09-07
+
+### Changed
+- Output naming follows the package name (user decision): `metacells.h5ad` →
+  `grains.h5ad`; grain ids `mc00001` → `g00001`; `membership.parquet` and
+  `viz_clusters.tsv` column `metacell_id` → `grain_id`; `summary.json` keys
+  `n_metacells_build` → `n_grains_build`, `n_metacells_final` → `n_grains`
+  (also in the per-block table); figure titles and `report.md` say grains.
+  The `mcRigor` status column keeps the method's name. Internally
+  `rigor.metacell_stats` is `rigor.grain_stats`.
+
 ## 0.3.0 - 2026-09-07
 
 ### Changed

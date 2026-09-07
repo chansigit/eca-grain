@@ -1,8 +1,8 @@
-"""Self-contained results page showing the final metacells only, two figures per unit:
-1. UMAP panel — left: metacells (opaque, dot size ∝ cells) on the raw cells (translucent), both coloured by coarse
-   lineage; right: UMAP computed on the metacells, Leiden clusters on top, coarse-lineage islands (concave hulls,
+"""Self-contained results page showing the final grains only, two figures per unit:
+1. UMAP panel — left: grains (opaque, dot size ∝ cells) on the raw cells (translucent), both coloured by coarse
+   lineage; right: UMAP computed on the grains, Leiden clusters on top, coarse-lineage islands (concave hulls,
    translucent) underneath; one shared lineage legend.
-2. Split marker heatmap — rows = de-duplicated top-5 Wilcoxon markers of the metacell clusters; columns split by
+2. Split marker heatmap — rows = de-duplicated top-5 Wilcoxon markers of the grain clusters; columns split by
    cluster, hierarchically ordered inside each split, splits ordered by clustering the split means; strip = lineage.
 python -m ecagrain figures <run_dir>... --out results.html"""
 
@@ -136,7 +136,7 @@ def _islands(ax, pts, color, ratio=HULL_RATIO):
 def figures(run_dir):
     d = Path(run_dir)
     s = json.loads((d / "summary.json").read_text())
-    mc = ad.read_h5ad(d / "metacells.h5ad")
+    mc = ad.read_h5ad(d / "grains.h5ad")
     mo = mc.obs
     mem = pd.read_parquet(d / "membership.parquet")
     lin_cells = mem["label"].to_numpy()  # block label = coarse lineage
@@ -151,7 +151,7 @@ def figures(run_dir):
     def lab(c, j):
         return f"{j}. {_short(c)}" if numbered else _short(c)
 
-    # metacell re-analysis: normalize → HVG → PCA → kNN → UMAP + Leiden
+    # grain re-analysis: normalize → HVG → PCA → kNN → UMAP + Leiden
     a = mc.copy()
     hv = vst_hvg(a.X, 2000)
     sc.pp.normalize_total(a, target_sum=1e4)
@@ -166,7 +166,7 @@ def figures(run_dir):
         a, resolution=LEIDEN_RES, random_state=0, key_added="cl", flavor="igraph", n_iterations=2, directed=False
     )
     cl = a.obs["cl"].astype(int).to_numpy()
-    pd.DataFrame({"metacell_id": mo.index, "viz_cluster": cl}).to_csv(d / "viz_clusters.tsv", sep="\t", index=False)
+    pd.DataFrame({"grain_id": mo.index, "viz_cluster": cl}).to_csv(d / "viz_clusters.tsv", sep="\t", index=False)
     cl_ids = sorted(np.unique(cl))
     cl_cmap = {c: plt.get_cmap("tab20b" if i % 2 else "tab20c")(i % 20) for i, c in enumerate(cl_ids)}
     xy = np.asarray(a.obsm["X_umap"])
@@ -188,7 +188,7 @@ def figures(run_dir):
                     linewidths=0,
                     zorder=1,
                 )
-        for c in labels:  # metacells: opaque, bigger, on top
+        for c in labels:  # grains: opaque, bigger, on top
             i = lin_mc == c
             axes[0].scatter(
                 mxy[i, 0],
@@ -203,7 +203,7 @@ def figures(run_dir):
         if numbered:
             _number(axes[0], labels, mxy, lin_mc)
     axes[0].set_title(
-        f"Metacells (opaque, dot size ∝ cell#) on raw cells (translucent)\n{len(mo)} metacells",
+        f"Grains (opaque, dot size ∝ cell#) on raw cells (translucent)\n{len(mo)} grains",
         fontsize=F_TITLE,
     )
     for c in cl_ids:
@@ -234,7 +234,7 @@ def figures(run_dir):
         if i.sum() >= 4:
             _islands(axes[1], xy[i], cmap[c])
     axes[1].set_title(
-        f"Metacell UMAP · Leiden clusters (res {LEIDEN_RES}, n = {len(cl_ids)})\nislands = coarse lineages",
+        f"Grain UMAP · Leiden clusters (res {LEIDEN_RES}, n = {len(cl_ids)})\nislands = coarse lineages",
         fontsize=F_TITLE,
     )
     axes[1].legend(
@@ -248,7 +248,7 @@ def figures(run_dir):
             for j, c in enumerate(labels, 1)
             if (lin_mc == c).sum() > 0
         ],
-        title="coarse lineage (metacells)",
+        title="coarse lineage (grains)",
         title_fontsize=F_LEGEND,
         fontsize=F_LEGEND,
         frameon=False,
@@ -353,7 +353,7 @@ def figures(run_dir):
     cax = fig.add_axes([0.905, 0.03, 0.012, 0.22])
     fig.colorbar(im, cax=cax).ax.tick_params(labelsize=F_STRIP)
     fig.suptitle(
-        f"Metacell marker heatmap · rows = top-{TOP_GENES} Wilcoxon markers per metacell cluster (de-duplicated, z-score ±3) · "
+        f"Grain marker heatmap · rows = top-{TOP_GENES} Wilcoxon markers per grain cluster (de-duplicated, z-score ±3) · "
         f"columns split by cluster (C#, n), hierarchical order inside splits, splits ordered by clustering split means · strip = coarse lineage",
         fontsize=F_LEGEND,
         y=0.998,
@@ -381,7 +381,7 @@ def write_html(run_dirs, out_path):
         q = " / ".join(f"{v:.0f}" for v in s["size_quantiles"].values())
         lines = (
             f"<li>{s['n_cells']} cells, {s['n_samples']} samples, {s['n_labels']} lineages, {s['n_blocks']} blocks</li>"
-            f"<li>{s['n_metacells_final']} grains; size quantiles 0/10/50/90/100%: {q} (γ = {s['params']['gamma']})</li>"
+            f"<li>{s['n_grains']} grains; size quantiles 0/10/50/90/100%: {q} (γ = {s['params']['gamma']})</li>"
             f"<li>{s['n_outliers']} outliers ({s['outlier_rate']:.1%}); cell conservation {s['conservation']}</li>"
         )
         imgs = "".join(f'<figure><img src="data:image/png;base64,{b}"></figure>' for b in figs.values())

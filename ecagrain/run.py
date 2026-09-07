@@ -32,7 +32,7 @@ DEFAULTS = dict(
 COLS = dict(
     sample_col="eca_sample_id",
     label_col="zmip_ann_coarse",  # block boundary (user decision 2026-09-07: coarse lineage)
-    audit_col="zmip_ann_fine",  # recorded per metacell (majority + purity), never used for grouping
+    audit_col="zmip_ann_fine",  # recorded per grain (majority + purity), never used for grouping
     counts_layer="counts",
     embed_key="X_pca_harmony",
 )
@@ -96,7 +96,7 @@ def build_stage(counts, obs, blocked, gpca, ghv, p, embed_key):
                     label=label,
                     embedding=src,
                     n_cells=len(cells),
-                    n_metacells_build=n_mc,
+                    n_grains_build=n_mc,
                 )
             )
     return mc_of, mc_block, tested_of, graphs, pd.DataFrame(blocks).set_index("block")
@@ -115,12 +115,12 @@ def outlier_stage(counts, obs, mc_of, graphs, tested_of, blocks):
     return is_out, n_flag
 
 
-def grain_stats(L, groups, ids, rng, p):
+def stats_table(L, groups, ids, rng, p):
     """③ mcRigor statistics per grain id (size only when below min_test_size)."""
     rows = {}
     for m in ids:
         n = len(groups[m])
-        r = rigor.metacell_stats(L, groups[m], rng, p["gene_filter"], p["nrep"]) if n >= p["min_test_size"] else None
+        r = rigor.grain_stats(L, groups[m], rng, p["gene_filter"], p["nrep"]) if n >= p["min_test_size"] else None
         rows[m] = r or {"size": n}
     st = pd.DataFrame.from_dict(rows, orient="index")
     st["TT_div"] = rigor.tt_div(st) if "T_org" in st else 1.0
@@ -184,7 +184,7 @@ def run(h5ad, outdir, **kw):
     L = logdata[:, hv_unit].tocsr()
     groups = pd.Series(np.arange(n_cells)).groupby(mc_of).indices  # build-id -> cell idx
     ids0 = [m for m in sorted(groups) if m >= 0]
-    st = grain_stats(L, groups, ids0, rng, p)
+    st = stats_table(L, groups, ids0, rng, p)
     st["dubious"], thre = rigor.flag_dubious(st, p["test_cutoff"])
     st["level"], st["parent"] = 0, -1
     n_dub0 = int(st["dubious"].sum())
@@ -194,7 +194,7 @@ def run(h5ad, outdir, **kw):
     groups = pd.Series(np.arange(n_cells)).groupby(mc_of).indices
     new_ids = [m for m in sorted(groups) if m >= 0 and m not in status]
     if new_ids:
-        st1 = grain_stats(L, groups, new_ids, rng, p)
+        st1 = stats_table(L, groups, new_ids, rng, p)
         st1["dubious"] = rigor.classify(st1["size"], st1["TT_div"], thre)
         st1["level"] = 1
         st1["parent"] = [build_id[groups[m][0]] for m in new_ids]
@@ -221,7 +221,7 @@ def run(h5ad, outdir, **kw):
     if not np.array_equal(check.to_numpy().astype(int), blocks["n_cells"].to_numpy()):
         raise SystemExit("conservation failed inside a block")
 
-    mc_id = np.array([f"mc{i:05d}" for i in range(len(final))])
+    gid = np.array([f"g{i:05d}" for i in range(len(final))])
     mem = obs.assign(row=row)
     aud = mem[assigned].groupby("row")["audit"].agg(lambda s: s.value_counts().idxmax())
     purity = mem[assigned].groupby("row")["audit"].agg(lambda s: s.value_counts().iloc[0] / len(s))
@@ -241,7 +241,7 @@ def run(h5ad, outdir, **kw):
             "n_test_genes": st.loc[final, "n_genes"].to_numpy() if "n_genes" in st else np.nan,
             "gamma": p["gamma"],
         },
-        index=mc_id,
+        index=gid,
     )
     mca = ad.AnnData(X=(M @ counts).tocsr(), obs=mobs, var=var)
     Mn = sparse.diags(1.0 / size) @ M
@@ -250,10 +250,10 @@ def run(h5ad, outdir, **kw):
     if gpca is not None:
         mca.obsm[f"{cols['embed_key']}_mean"] = np.asarray(Mn @ gpca)
     mca.uns["ecagrain"] = {"version": __version__, "params": p, "columns": cols, "input": str(h5ad)}
-    mca.write_h5ad(outdir / "metacells.h5ad")
+    mca.write_h5ad(outdir / "grains.h5ad")
 
     membership = obs.assign(
-        metacell_id=np.where(assigned, mc_id[np.maximum(row, 0)], None),
+        grain_id=np.where(assigned, gid[np.maximum(row, 0)], None),
         status=np.where(is_out, "outlier", "member"),
         n_flag_genes=n_flag,
         build_id=build_id,
@@ -266,9 +266,9 @@ def run(h5ad, outdir, **kw):
     thre.to_csv(outdir / "threshold.tsv", sep="\t", index=False)
 
     mc_by_block = mobs.groupby("block")
-    blocks["n_metacells_final"] = mc_by_block.size()
+    blocks["n_grains"] = mc_by_block.size()
     blocks["n_residual_dubious"] = mc_by_block["mcRigor"].apply(lambda s: int((s == "residual_dubious").sum()))
-    blocks = blocks.fillna({"n_metacells_final": 0, "n_residual_dubious": 0})
+    blocks = blocks.fillna({"n_grains": 0, "n_residual_dubious": 0})
     summary = {
         "version": __version__,
         "input": str(h5ad),
@@ -278,13 +278,13 @@ def run(h5ad, outdir, **kw):
         "n_blocks": int(len(blocks)),
         "n_labels": int(obs["label"].nunique()),
         "n_samples": int(obs["sample"].nunique()),
-        "n_metacells_build": int(len(ids0)),
+        "n_grains_build": int(len(ids0)),
         "n_outliers": int(is_out.sum()),
         "outlier_rate": float(is_out.mean()),
         "n_dubious_build": n_dub0,
         "dubious_rate_build": n_dub0 / max(len(ids0), 1),
         "n_split": int(sum(s == "split" for s in status.values())),
-        "n_metacells_final": int(len(final)),
+        "n_grains": int(len(final)),
         "n_residual_dubious": int(sum(status[m] == "residual_dubious" for m in final)),
         "n_untested": int(sum(status[m] == "untested" for m in final)),
         "cells_by_status": {
@@ -313,20 +313,18 @@ def report(s, blocks):
         f"# ecagrain {s['version']} · {s['input']}",
         "",
         f"- cells {s['n_cells']} · samples {s['n_samples']} · labels {s['n_labels']} · blocks {s['n_blocks']}",
-        f"- final metacells {s['n_metacells_final']} (size 0/10/50/90/100%: "
+        f"- grains {s['n_grains']} (size 0/10/50/90/100%: "
         + " / ".join(f"{v:.0f}" for v in s["size_quantiles"].values())
         + ")",
         f"- outliers {s['n_outliers']} ({s['outlier_rate']:.1%}); audit-label purity median {s['audit_purity_median']:.3f}; "
         f"conservation {s['conservation']}; {s['elapsed_s']} s",
-        f"- internals: built {s['n_metacells_build']}, dubious at build {s['n_dubious_build']} ({s['dubious_rate_build']:.1%}), "
+        f"- internals: built {s['n_grains_build']}, dubious at build {s['n_dubious_build']} ({s['dubious_rate_build']:.1%}), "
         f"split {s['n_split']}, residual dubious {s['n_residual_dubious']}, untested {s['n_untested']}; cells by status "
         + ", ".join(f"{k} {v} ({v / s['n_cells']:.1%})" for k, v in s["cells_by_status"].items()),
         "",
-        "| block | embedding | cells | outliers | metacells |",
+        "| block | embedding | cells | outliers | grains |",
         "|---|---|---:|---:|---:|",
     ]
     for b, r in blocks.iterrows():
-        L.append(
-            f"| {b} | {r['embedding']} | {r['n_cells']} | {int(r['n_outliers'])} | {int(r['n_metacells_final'])} |"
-        )
+        L.append(f"| {b} | {r['embedding']} | {r['n_cells']} | {int(r['n_outliers'])} | {int(r['n_grains'])} |")
     return "\n".join(L) + "\n"

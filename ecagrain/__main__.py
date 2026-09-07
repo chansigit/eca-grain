@@ -18,7 +18,7 @@ from .run import COLS, DEFAULTS, run
 def main():
     ap = argparse.ArgumentParser(prog="ecagrain")
     sp = ap.add_subparsers(dest="cmd", required=True)
-    r = sp.add_parser("run", help="one-through metacells for one released unit")
+    r = sp.add_parser("run", help="one-through grains for one released unit")
     r.add_argument("h5ad")
     r.add_argument("outdir")
     for k, v in {**DEFAULTS, **COLS}.items():
@@ -40,7 +40,7 @@ def main():
     elif a.cmd == "run":
         s = run(a.h5ad, a.outdir, **{k: getattr(a, k) for k in {**DEFAULTS, **COLS}})
         print(
-            f"{s['n_cells']} cells → {s['n_metacells_final']} metacells, {s['n_outliers']} outliers, "
+            f"{s['n_cells']} cells → {s['n_grains']} grains, {s['n_outliers']} outliers, "
             f"{s['n_residual_dubious']} residual dubious, {s['elapsed_s']} s → {a.outdir}"
         )
     else:

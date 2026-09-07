@@ -45,24 +45,24 @@ def test_run_conserves_cells_and_writes_report(unit, tmp_path):
     h5ad, a = unit
     out = tmp_path / "grain"
     s = run(h5ad, out, nrep=3)
-    mc = ad.read_h5ad(out / "metacells.h5ad")
+    mc = ad.read_h5ad(out / "grains.h5ad")
     mem = pd.read_parquet(out / "membership.parquet")
 
     assert s["conservation"] == "ok"
     assert mc.n_vars == a.n_vars and list(mc.var_names) == list(a.var_names)  # whole genome kept
     assert len(mem) == a.n_obs
     assert mc.obs["size"].sum() + s["n_outliers"] == a.n_obs
-    assert set(mem.loc[mem.status == "member", "metacell_id"]) == set(mc.obs_names)
-    assert mem.loc[mem.status == "outlier", "metacell_id"].isna().all()
+    assert set(mem.loc[mem.status == "member", "grain_id"]) == set(mc.obs_names)
+    assert mem.loc[mem.status == "outlier", "grain_id"].isna().all()
 
     # a grain lives inside one sample × label block
     m = mem[mem.status == "member"]
-    assert (m.groupby("metacell_id")["block"].nunique() == 1).all()
-    assert (mc.obs.loc[m["metacell_id"], "block"].to_numpy() == m["block"].to_numpy()).all()
+    assert (m.groupby("grain_id")["block"].nunique() == 1).all()
+    assert (mc.obs.loc[m["grain_id"], "block"].to_numpy() == m["block"].to_numpy()).all()
 
     # summed counts equal the members' counts
     g = mc.obs_names[0]
-    cells = m.loc[m.metacell_id == g, "cell"]
+    cells = m.loc[m.grain_id == g, "cell"]
     expect = np.asarray(a[cells].layers["counts"].sum(0)).ravel()
     assert np.allclose(mc[g].X.toarray().ravel(), expect)
     assert mc.obs.loc[g, "size"] == len(cells)
